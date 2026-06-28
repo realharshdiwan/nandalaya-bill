@@ -13,7 +13,7 @@ const buttonVariants = cva(
         secondary:
           "bg-[#0023D1] text-white rounded-[20px] shadow-[6px_6px_0_0_#000] skew-x-[-15deg] hover:shadow-[10px_10px_0_0_#000] hover:translate-x-[-2px] hover:translate-y-[-2px] focus-visible:ring-4 focus-visible:ring-[#E374C7] focus-visible:ring-offset-4 [&>span]:skew-x-[15deg]",
         tertiary:
-          "bg-transparent text-[#00592B] rounded-[20px] border-4 border-black shadow-[6px_6px_0_0_#000] skew-x-[-15deg] hover:bg-[#E374C7] hover:text-black hover:shadow-[10px_10px_0_0_#000] focus-visible:ring-4 focus-visible:ring-[#0023D1] focus-visible:ring-offset-4 [&>span]:skew-x-[15deg]",
+          "bg-transparent text-white rounded-[20px] border-4 border-black shadow-[6px_6px_0_0_#000] skew-x-[-15deg] hover:bg-[#E374C7] hover:text-black hover:shadow-[10px_10px_0_0_#000] focus-visible:ring-4 focus-visible:ring-[#0023D1] focus-visible:ring-offset-4 [&>span]:skew-x-[15deg]",
         success:
           "bg-[#00592B] text-white rounded-[20px] shadow-[6px_6px_0_0_#000] skew-x-[-15deg] hover:shadow-[10px_10px_0_0_#000] hover:translate-x-[-2px] hover:translate-y-[-2px] focus-visible:ring-4 focus-visible:ring-[#00592B] focus-visible:ring-offset-4 [&>span]:skew-x-[15deg]",
         danger:
