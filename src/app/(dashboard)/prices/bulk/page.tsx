@@ -161,14 +161,13 @@ export default function BulkPricePage() {
       }
     }
 
-    // For each row: check if price_list entry exists, update or insert
+    // For each row: check if price_list entry exists (active or not), update or insert
     for (const row of rows) {
       let query = supabase
         .from("price_list")
-        .select("id")
+        .select("id, is_active")
         .eq("school_id", row.school_id)
-        .eq("product_id", row.product_id)
-        .eq("is_active", true);
+        .eq("product_id", row.product_id);
 
       if (row.size_id === null) {
         query = query.is("size_id", null);
@@ -179,10 +178,10 @@ export default function BulkPricePage() {
       const { data: existing } = await query.maybeSingle();
 
       if (existing) {
-        // Update existing row
+        // Update existing row (reactivate if it was deactivated)
         const { error } = await supabase
           .from("price_list")
-          .update({ price: row.price })
+          .update({ price: row.price, is_active: true })
           .eq("id", existing.id);
         if (!error) saved++;
       } else {
