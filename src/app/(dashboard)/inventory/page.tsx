@@ -257,7 +257,7 @@ export default function InventoryPage() {
               <Select value={formProduct} onValueChange={(v) => setFormProduct(v ?? "")}>
                 <SelectTrigger><SelectValue placeholder="SELECT PRODUCT" /></SelectTrigger>
                 <SelectContent>
-                  {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  {products.map((p) => <SelectItem key={p.id} value={p.id} label={p.name}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -266,7 +266,7 @@ export default function InventoryPage() {
               <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")}>
                 <SelectTrigger><SelectValue placeholder="SELECT SIZE" /></SelectTrigger>
                 <SelectContent>
-                  {sizes.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                  {sizes.map((s) => <SelectItem key={s.id} value={s.id} label={s.label}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -275,7 +275,7 @@ export default function InventoryPage() {
               <Select value={formSupplier} onValueChange={(v) => setFormSupplier(v ?? "")}>
                 <SelectTrigger><SelectValue placeholder="SELECT SUPPLIER" /></SelectTrigger>
                 <SelectContent>
-                  {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {suppliers.map((s) => <SelectItem key={s.id} value={s.id} label={s.name}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -285,9 +285,9 @@ export default function InventoryPage() {
                 <Select value={formType} onValueChange={(v) => setFormType(v ?? "purchase")}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="purchase">PURCHASE</SelectItem>
-                    <SelectItem value="adjustment">ADJUSTMENT</SelectItem>
-                    <SelectItem value="return">RETURN</SelectItem>
+                    <SelectItem value="purchase" label="PURCHASE">PURCHASE</SelectItem>
+                    <SelectItem value="adjustment" label="ADJUSTMENT">ADJUSTMENT</SelectItem>
+                    <SelectItem value="return" label="RETURN">RETURN</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

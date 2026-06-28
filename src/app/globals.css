@@ -172,32 +172,34 @@
     print-color-adjust: exact !important;
   }
 
-  /* Kill everything except the receipt */
-  .no-print,
+  /* Hide sidebar, header, and app chrome */
   aside,
-  aside ~ div,
   header,
-  nav,
-  .min-h-screen,
-  .min-h-screen > *:not(main) {
+  .no-print {
     display: none !important;
     visibility: hidden !important;
-    height: 0 !important;
-    overflow: hidden !important;
   }
 
-  /* Remove sidebar offset, kill green background */
+  /* Remove sidebar left-padding from main */
   main {
     padding: 0 !important;
     margin: 0 !important;
     width: var(--receipt-width) !important;
     max-width: var(--receipt-width) !important;
     background: white !important;
+    transform: none !important;
   }
 
+  /* Kill green background */
+  .min-h-screen {
+    background: white !important;
+  }
+
+  /* Inner content wrapper */
   main > div {
     padding: 0 !important;
     max-width: var(--receipt-width) !important;
+    margin: 0 !important;
   }
 
   /* Receipt card — clean up */

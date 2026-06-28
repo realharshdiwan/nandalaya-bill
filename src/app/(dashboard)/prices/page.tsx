@@ -241,9 +241,9 @@ export default function PricesPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">ALL SCHOOLS</SelectItem>
+            <SelectItem value="all" label="ALL SCHOOLS">ALL SCHOOLS</SelectItem>
             {schools.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
+              <SelectItem key={s.id} value={s.id} label={s.short_code ? `${s.short_code} — ${s.name}` : s.name}>
                 {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
               </SelectItem>
             ))}
@@ -331,7 +331,7 @@ export default function PricesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {schools.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
+                    <SelectItem key={s.id} value={s.id} label={s.short_code ? `${s.short_code} — ${s.name}` : s.name}>
                       {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
                     </SelectItem>
                   ))}
@@ -348,7 +348,7 @@ export default function PricesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
+                    <SelectItem key={p.id} value={p.id} label={p.name}>
                       {p.name}
                     </SelectItem>
                   ))}
@@ -365,7 +365,7 @@ export default function PricesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {sizes.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
+                    <SelectItem key={s.id} value={s.id} label={s.label}>
                       {s.label}
                     </SelectItem>
                   ))}

@@ -289,7 +289,7 @@ export default function NewBillPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {schools.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
+                    <SelectItem key={s.id} value={s.id} label={s.short_code ? `${s.short_code} — ${s.name}` : s.name}>
                       {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
                     </SelectItem>
                   ))}
@@ -310,7 +310,7 @@ export default function NewBillPage() {
                   <Select value={addProductId} onValueChange={(v) => setAddProductId(v ?? "")}>
                     <SelectTrigger><SelectValue placeholder="PRODUCT" /></SelectTrigger>
                     <SelectContent>
-                      {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                      {products.map((p) => <SelectItem key={p.id} value={p.id} label={p.name}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -319,7 +319,7 @@ export default function NewBillPage() {
                   <Select value={addSizeId} onValueChange={(v) => setAddSizeId(v ?? "")}>
                     <SelectTrigger><SelectValue placeholder="SIZE" /></SelectTrigger>
                     <SelectContent>
-                      {sizes.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                      {sizes.map((s) => <SelectItem key={s.id} value={s.id} label={s.label}>{s.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -338,9 +338,9 @@ export default function NewBillPage() {
                   <Select value={addDiscountType} onValueChange={(v) => setAddDiscountType((v as "none" | "flat" | "percent") ?? "none")}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">NONE</SelectItem>
-                      <SelectItem value="flat">₹ OFF</SelectItem>
-                      <SelectItem value="percent">% OFF</SelectItem>
+                      <SelectItem value="none" label="NONE">NONE</SelectItem>
+                      <SelectItem value="flat" label="₹ OFF">₹ OFF</SelectItem>
+                      <SelectItem value="percent" label="% OFF">% OFF</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -435,10 +435,10 @@ export default function NewBillPage() {
                 <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "cash")}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">CASH</SelectItem>
-                    <SelectItem value="upi">UPI</SelectItem>
-                    <SelectItem value="card">CARD</SelectItem>
-                    <SelectItem value="credit">CREDIT</SelectItem>
+                    <SelectItem value="cash" label="CASH">CASH</SelectItem>
+                    <SelectItem value="upi" label="UPI">UPI</SelectItem>
+                    <SelectItem value="card" label="CARD">CARD</SelectItem>
+                    <SelectItem value="credit" label="CREDIT">CREDIT</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

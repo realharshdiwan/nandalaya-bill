@@ -205,7 +205,7 @@ export default function BulkPricePage() {
             </SelectTrigger>
             <SelectContent>
               {schools.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
+                <SelectItem key={s.id} value={s.id} label={s.short_code ? `${s.short_code} — ${s.name}` : s.name}>
                   {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
                 </SelectItem>
               ))}

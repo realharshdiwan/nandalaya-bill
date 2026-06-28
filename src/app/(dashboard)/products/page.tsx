@@ -216,9 +216,9 @@ export default function ProductsPage() {
               <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="uniform">UNIFORM</SelectItem>
-                  <SelectItem value="accessory">ACCESSORY</SelectItem>
-                  <SelectItem value="garment">GARMENT</SelectItem>
+                  <SelectItem value="uniform" label="UNIFORM">UNIFORM</SelectItem>
+                  <SelectItem value="accessory" label="ACCESSORY">ACCESSORY</SelectItem>
+                  <SelectItem value="garment" label="GARMENT">GARMENT</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -256,9 +256,9 @@ export default function ProductsPage() {
               <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="uniform">UNIFORM</SelectItem>
-                  <SelectItem value="accessory">ACCESSORY</SelectItem>
-                  <SelectItem value="garment">GARMENT</SelectItem>
+                  <SelectItem value="uniform" label="UNIFORM">UNIFORM</SelectItem>
+                  <SelectItem value="accessory" label="ACCESSORY">ACCESSORY</SelectItem>
+                  <SelectItem value="garment" label="GARMENT">GARMENT</SelectItem>
                 </SelectContent>
               </Select>
             </div>
