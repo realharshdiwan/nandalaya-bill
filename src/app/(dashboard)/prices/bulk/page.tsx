@@ -131,75 +131,99 @@ export default function BulkPricePage() {
     }
 
     setLoading(true);
-    let saved = 0;
 
-    // Collect all cells that need to be saved (non-empty, positive price)
-    type PriceRow = {
-      school_id: string;
-      product_id: string;
-      size_id: string | null;
-      price: number;
-    };
-    const rows: PriceRow[] = [];
+    try {
+      // Collect all cells that need to be saved (non-empty, positive price)
+      type PriceRow = {
+        school_id: string;
+        product_id: string;
+        size_id: string | null;
+        price: number;
+      };
+      const rows: PriceRow[] = [];
 
-    for (const schoolId of selectedSchools) {
-      for (const product of products) {
-        // Sized prices
-        for (const size of sizes) {
-          const value = matrix[product.id]?.[size.id];
-          const price = value ? parseFloat(value) : null;
-          if (price !== null && price > 0) {
-            rows.push({ school_id: schoolId, product_id: product.id, size_id: size.id, price });
+      for (const schoolId of selectedSchools) {
+        for (const product of products) {
+          for (const size of sizes) {
+            const value = matrix[product.id]?.[size.id];
+            const price = value ? parseFloat(value) : null;
+            if (price !== null && price > 0) {
+              rows.push({ school_id: schoolId, product_id: product.id, size_id: size.id, price });
+            }
+          }
+          const noSizeValue = matrix[product.id]?.["__no_size__"];
+          const noSizePrice = noSizeValue ? parseFloat(noSizeValue) : null;
+          if (noSizePrice !== null && noSizePrice > 0) {
+            rows.push({ school_id: schoolId, product_id: product.id, size_id: null, price: noSizePrice });
           }
         }
-        // No-size price
-        const noSizeValue = matrix[product.id]?.["__no_size__"];
-        const noSizePrice = noSizeValue ? parseFloat(noSizeValue) : null;
-        if (noSizePrice !== null && noSizePrice > 0) {
-          rows.push({ school_id: schoolId, product_id: product.id, size_id: null, price: noSizePrice });
+      }
+
+      if (rows.length === 0) {
+        toast.error("Enter at least one price");
+        setLoading(false);
+        return;
+      }
+
+      // Batch 1: Get ALL existing prices for each school (active or not)
+      const existingMap = new Map<string, string>(); // key: "schoolId|productId|sizeId|null" → price_list.id
+      await Promise.all(
+        selectedSchools.map(async (schoolId) => {
+          const { data } = await supabase
+            .from("price_list")
+            .select("id, product_id, size_id")
+            .eq("school_id", schoolId);
+          if (data) {
+            for (const row of data) {
+              const key = `${schoolId}|${row.product_id}|${row.size_id}`;
+              existingMap.set(key, row.id);
+            }
+          }
+        })
+      );
+
+      // Batch 2: Split into inserts and updates
+      const inserts: PriceRow[] = [];
+      const updates: { id: string; price: number }[] = [];
+
+      for (const row of rows) {
+        const key = `${row.school_id}|${row.product_id}|${row.size_id}`;
+        const existingId = existingMap.get(key);
+        if (existingId) {
+          updates.push({ id: existingId, price: row.price });
+        } else {
+          inserts.push(row);
         }
       }
-    }
 
-    // For each row: check if price_list entry exists (active or not), update or insert
-    for (const row of rows) {
-      let query = supabase
-        .from("price_list")
-        .select("id, is_active")
-        .eq("school_id", row.school_id)
-        .eq("product_id", row.product_id);
+      // Batch 3: Run all DB writes in parallel
+      let saved = 0;
 
-      if (row.size_id === null) {
-        query = query.is("size_id", null);
-      } else {
-        query = query.eq("size_id", row.size_id);
-      }
+      const updateResults = await Promise.all(
+        updates.map(({ id, price }) =>
+          supabase.from("price_list").update({ price, is_active: true }).eq("id", id)
+        )
+      );
+      saved += updateResults.filter((r) => !r.error).length;
 
-      const { data: existing } = await query.maybeSingle();
-
-      if (existing) {
-        // Update existing row (reactivate if it was deactivated)
-        const { error } = await supabase
-          .from("price_list")
-          .update({ price: row.price, is_active: true })
-          .eq("id", existing.id);
-        if (!error) saved++;
-      } else {
-        // Insert new row
-        const { error } = await supabase
-          .from("price_list")
-          .insert({
+      const insertResults = await Promise.all(
+        inserts.map((row) =>
+          supabase.from("price_list").insert({
             school_id: row.school_id,
             product_id: row.product_id,
             size_id: row.size_id,
             price: row.price,
             is_active: true,
-          });
-        if (!error) saved++;
-      }
+          })
+        )
+      );
+      saved += insertResults.filter((r) => !r.error).length;
+
+      toast.success(`Saved ${saved} prices to ${selectedSchools.length} school(s)`);
+    } catch (err) {
+      toast.error("Failed to save prices: " + (err instanceof Error ? err.message : "Unknown error"));
     }
 
-    toast.success(`Saved ${saved} prices to ${selectedSchools.length} school(s)`);
     setLoading(false);
     router.push("/prices");
   }
