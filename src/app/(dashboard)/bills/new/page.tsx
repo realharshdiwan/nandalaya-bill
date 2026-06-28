@@ -283,13 +283,13 @@ export default function NewBillPage() {
               <CardTitle className="text-[16px]">SCHOOL (OPTIONAL — FOR PRICE LOOKUP)</CardTitle>
             </CardHeader>
             <CardContent>
-              <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "")}>
+              <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "")} items={schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="SELECT SCHOOL FOR AUTO-PRICING" />
                 </SelectTrigger>
                 <SelectContent>
                   {schools.map((s) => (
-                    <SelectItem key={s.id} value={s.id} label={s.short_code ? `${s.short_code} — ${s.name}` : s.name}>
+                    <SelectItem key={s.id} value={s.id}>
                       {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
                     </SelectItem>
                   ))}
@@ -307,19 +307,19 @@ export default function NewBillPage() {
               <div className="grid gap-3 sm:grid-cols-4">
                 <div className="sm:col-span-1">
                   <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PRODUCT</Label>
-                  <Select value={addProductId} onValueChange={(v) => setAddProductId(v ?? "")}>
+                  <Select value={addProductId} onValueChange={(v) => setAddProductId(v ?? "")} items={products.map((p) => ({ value: p.id, label: p.name }))}>
                     <SelectTrigger><SelectValue placeholder="PRODUCT" /></SelectTrigger>
                     <SelectContent>
-                      {products.map((p) => <SelectItem key={p.id} value={p.id} label={p.name}>{p.name}</SelectItem>)}
+                      {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">SIZE</Label>
-                  <Select value={addSizeId} onValueChange={(v) => setAddSizeId(v ?? "")}>
+                  <Select value={addSizeId} onValueChange={(v) => setAddSizeId(v ?? "")} items={sizes.map((s) => ({ value: s.id, label: s.label }))}>
                     <SelectTrigger><SelectValue placeholder="SIZE" /></SelectTrigger>
                     <SelectContent>
-                      {sizes.map((s) => <SelectItem key={s.id} value={s.id} label={s.label}>{s.label}</SelectItem>)}
+                      {sizes.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -335,12 +335,12 @@ export default function NewBillPage() {
               <div className="grid gap-3 sm:grid-cols-4 mt-2">
                 <div>
                   <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">DISCOUNT TYPE</Label>
-                  <Select value={addDiscountType} onValueChange={(v) => setAddDiscountType((v as "none" | "flat" | "percent") ?? "none")}>
+                  <Select value={addDiscountType} onValueChange={(v) => setAddDiscountType((v as "none" | "flat" | "percent") ?? "none")} items={[{ value: "none", label: "NONE" }, { value: "flat", label: "₹ OFF" }, { value: "percent", label: "% OFF" }]}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none" label="NONE">NONE</SelectItem>
-                      <SelectItem value="flat" label="₹ OFF">₹ OFF</SelectItem>
-                      <SelectItem value="percent" label="% OFF">% OFF</SelectItem>
+                      <SelectItem value="none">NONE</SelectItem>
+                      <SelectItem value="flat">₹ OFF</SelectItem>
+                      <SelectItem value="percent">% OFF</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -432,13 +432,13 @@ export default function NewBillPage() {
             <CardContent className="space-y-3">
               <div>
                 <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">METHOD</Label>
-                <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "cash")}>
+                <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "cash")} items={[{ value: "cash", label: "CASH" }, { value: "upi", label: "UPI" }, { value: "card", label: "CARD" }, { value: "credit", label: "CREDIT" }]}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash" label="CASH">CASH</SelectItem>
-                    <SelectItem value="upi" label="UPI">UPI</SelectItem>
-                    <SelectItem value="card" label="CARD">CARD</SelectItem>
-                    <SelectItem value="credit" label="CREDIT">CREDIT</SelectItem>
+                    <SelectItem value="cash">CASH</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                    <SelectItem value="card">CARD</SelectItem>
+                    <SelectItem value="credit">CREDIT</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -236,14 +236,14 @@ export default function PricesPage() {
         <Label className="text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
           FILTER BY SCHOOL:
         </Label>
-        <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "all")}>
+        <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "all")} items={[{ value: "all", label: "ALL SCHOOLS" }, ...schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))]}>
           <SelectTrigger className="w-[250px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all" label="ALL SCHOOLS">ALL SCHOOLS</SelectItem>
+            <SelectItem value="all">ALL SCHOOLS</SelectItem>
             {schools.map((s) => (
-              <SelectItem key={s.id} value={s.id} label={s.short_code ? `${s.short_code} — ${s.name}` : s.name}>
+              <SelectItem key={s.id} value={s.id}>
                 {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
               </SelectItem>
             ))}
@@ -325,13 +325,13 @@ export default function PricesPage() {
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 SCHOOL
               </Label>
-              <Select value={formSchool} onValueChange={(v) => setFormSchool(v ?? "")} required>
+              <Select value={formSchool} onValueChange={(v) => setFormSchool(v ?? "")} required items={schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="SELECT SCHOOL" />
                 </SelectTrigger>
                 <SelectContent>
                   {schools.map((s) => (
-                    <SelectItem key={s.id} value={s.id} label={s.short_code ? `${s.short_code} — ${s.name}` : s.name}>
+                    <SelectItem key={s.id} value={s.id}>
                       {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
                     </SelectItem>
                   ))}
@@ -342,13 +342,13 @@ export default function PricesPage() {
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 PRODUCT
               </Label>
-              <Select value={formProduct} onValueChange={(v) => setFormProduct(v ?? "")} required>
+              <Select value={formProduct} onValueChange={(v) => setFormProduct(v ?? "")} required items={products.map((p) => ({ value: p.id, label: p.name }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="SELECT PRODUCT" />
                 </SelectTrigger>
                 <SelectContent>
                   {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id} label={p.name}>
+                    <SelectItem key={p.id} value={p.id}>
                       {p.name}
                     </SelectItem>
                   ))}
@@ -359,13 +359,13 @@ export default function PricesPage() {
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 SIZE
               </Label>
-              <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")} required>
+              <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")} required items={sizes.map((s) => ({ value: s.id, label: s.label }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="SELECT SIZE" />
                 </SelectTrigger>
                 <SelectContent>
                   {sizes.map((s) => (
-                    <SelectItem key={s.id} value={s.id} label={s.label}>
+                    <SelectItem key={s.id} value={s.id}>
                       {s.label}
                     </SelectItem>
                   ))}

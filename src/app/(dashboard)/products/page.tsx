@@ -213,12 +213,12 @@ export default function ProductsPage() {
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 CATEGORY
               </Label>
-              <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")}>
+              <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")} items={[{ value: "uniform", label: "UNIFORM" }, { value: "accessory", label: "ACCESSORY" }, { value: "garment", label: "GARMENT" }]}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="uniform" label="UNIFORM">UNIFORM</SelectItem>
-                  <SelectItem value="accessory" label="ACCESSORY">ACCESSORY</SelectItem>
-                  <SelectItem value="garment" label="GARMENT">GARMENT</SelectItem>
+                  <SelectItem value="uniform">UNIFORM</SelectItem>
+                  <SelectItem value="accessory">ACCESSORY</SelectItem>
+                  <SelectItem value="garment">GARMENT</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -253,12 +253,12 @@ export default function ProductsPage() {
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 CATEGORY
               </Label>
-              <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")}>
+              <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")} items={[{ value: "uniform", label: "UNIFORM" }, { value: "accessory", label: "ACCESSORY" }, { value: "garment", label: "GARMENT" }]}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="uniform" label="UNIFORM">UNIFORM</SelectItem>
-                  <SelectItem value="accessory" label="ACCESSORY">ACCESSORY</SelectItem>
-                  <SelectItem value="garment" label="GARMENT">GARMENT</SelectItem>
+                  <SelectItem value="uniform">UNIFORM</SelectItem>
+                  <SelectItem value="accessory">ACCESSORY</SelectItem>
+                  <SelectItem value="garment">GARMENT</SelectItem>
                 </SelectContent>
               </Select>
             </div>

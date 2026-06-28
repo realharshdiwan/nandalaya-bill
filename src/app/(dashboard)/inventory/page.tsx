@@ -254,40 +254,40 @@ export default function InventoryPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">PRODUCT</Label>
-              <Select value={formProduct} onValueChange={(v) => setFormProduct(v ?? "")}>
+              <Select value={formProduct} onValueChange={(v) => setFormProduct(v ?? "")} items={products.map((p) => ({ value: p.id, label: p.name }))}>
                 <SelectTrigger><SelectValue placeholder="SELECT PRODUCT" /></SelectTrigger>
                 <SelectContent>
-                  {products.map((p) => <SelectItem key={p.id} value={p.id} label={p.name}>{p.name}</SelectItem>)}
+                  {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">SIZE (OPTIONAL)</Label>
-              <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")}>
+              <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")} items={sizes.map((s) => ({ value: s.id, label: s.label }))}>
                 <SelectTrigger><SelectValue placeholder="SELECT SIZE" /></SelectTrigger>
                 <SelectContent>
-                  {sizes.map((s) => <SelectItem key={s.id} value={s.id} label={s.label}>{s.label}</SelectItem>)}
+                  {sizes.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">SUPPLIER (OPTIONAL)</Label>
-              <Select value={formSupplier} onValueChange={(v) => setFormSupplier(v ?? "")}>
+              <Select value={formSupplier} onValueChange={(v) => setFormSupplier(v ?? "")} items={suppliers.map((s) => ({ value: s.id, label: s.name }))}>
                 <SelectTrigger><SelectValue placeholder="SELECT SUPPLIER" /></SelectTrigger>
                 <SelectContent>
-                  {suppliers.map((s) => <SelectItem key={s.id} value={s.id} label={s.name}>{s.name}</SelectItem>)}
+                  {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">ENTRY TYPE</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v ?? "purchase")}>
+                <Select value={formType} onValueChange={(v) => setFormType(v ?? "purchase")} items={[{ value: "purchase", label: "PURCHASE" }, { value: "adjustment", label: "ADJUSTMENT" }, { value: "return", label: "RETURN" }]}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="purchase" label="PURCHASE">PURCHASE</SelectItem>
-                    <SelectItem value="adjustment" label="ADJUSTMENT">ADJUSTMENT</SelectItem>
-                    <SelectItem value="return" label="RETURN">RETURN</SelectItem>
+                    <SelectItem value="purchase">PURCHASE</SelectItem>
+                    <SelectItem value="adjustment">ADJUSTMENT</SelectItem>
+                    <SelectItem value="return">RETURN</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

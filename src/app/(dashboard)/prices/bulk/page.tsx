@@ -199,13 +199,13 @@ export default function BulkPricePage() {
           <CardTitle className="text-[16px]">SELECT SCHOOL</CardTitle>
         </CardHeader>
         <CardContent>
-          <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "")}>
+          <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "")} items={schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))}>
             <SelectTrigger className="w-full max-w-md">
               <SelectValue placeholder="CHOOSE A SCHOOL" />
             </SelectTrigger>
             <SelectContent>
               {schools.map((s) => (
-                <SelectItem key={s.id} value={s.id} label={s.short_code ? `${s.short_code} — ${s.name}` : s.name}>
+                <SelectItem key={s.id} value={s.id}>
                   {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
                 </SelectItem>
               ))}
