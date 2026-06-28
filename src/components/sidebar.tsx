@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import {
   Home,
+  LayoutDashboard,
   School,
   Package,
   IndianRupee,
@@ -18,6 +19,7 @@ import {
 
 const navItems = [
   { href: "/", label: "Search", icon: Home },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/schools", label: "Schools", icon: School },
   { href: "/products", label: "Products", icon: Package },
   { href: "/prices", label: "Prices", icon: IndianRupee },

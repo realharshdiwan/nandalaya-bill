@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, School, Package, IndianRupee, Receipt, TrendingUp, CreditCard } from "lucide-react";
+import { Search, School, Package, IndianRupee, Receipt } from "lucide-react";
 import Link from "next/link";
 
 interface SearchResult {
@@ -21,63 +21,11 @@ interface SearchResult {
   price?: number;
 }
 
-interface DashboardStats {
-  todayRevenue: number;
-  weekRevenue: number;
-  monthRevenue: number;
-  monthBills: number;
-  pendingPayments: number;
-  topProducts: { name: string; count: number }[];
-}
-
 export default function HomePage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
   const supabase = createClient();
-
-  async function loadStats() {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    const weekStart = new Date(now);
-    weekStart.setDate(weekStart.getDate() - 7);
-    const monthStart = new Date(now);
-    monthStart.setDate(monthStart.getDate() - 30);
-
-    const [todayRes, weekRes, monthRes, pendingRes, topRes] = await Promise.all([
-      supabase.from("bills").select("total").eq("status", "active").gte("created_at", todayStart),
-      supabase.from("bills").select("total").eq("status", "active").gte("created_at", weekStart.toISOString()),
-      supabase.from("bills").select("total").eq("status", "active").gte("created_at", monthStart.toISOString()),
-      supabase.from("bills").select("total").eq("status", "active").eq("payment_method", "credit").gte("created_at", monthStart.toISOString()),
-      supabase.from("bill_items").select("product_name").gte("created_at", monthStart.toISOString()),
-    ]);
-
-    const todayRevenue = todayRes.data?.reduce((sum, b) => sum + (b.total || 0), 0) || 0;
-    const weekRevenue = weekRes.data?.reduce((sum, b) => sum + (b.total || 0), 0) || 0;
-    const monthRevenue = monthRes.data?.reduce((sum, b) => sum + (b.total || 0), 0) || 0;
-    const monthBills = monthRes.data?.length || 0;
-    const pendingPayments = pendingRes.data?.reduce((sum, b) => sum + (b.total || 0), 0) || 0;
-
-    const productCounts: Record<string, number> = {};
-    topRes.data?.forEach((item) => {
-      if (item.product_name) {
-        productCounts[item.product_name] = (productCounts[item.product_name] || 0) + 1;
-      }
-    });
-    const topProducts = Object.entries(productCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, count]) => ({ name, count }));
-
-    setStats({ todayRevenue, weekRevenue, monthRevenue, monthBills, pendingPayments, topProducts });
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -145,107 +93,8 @@ export default function HomePage() {
     setLoading(false);
   }, [supabase]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => search(query), 300);
-    return () => clearTimeout(timer);
-  }, [query, search]);
-
-  const iconMap = {
-    school: School,
-    product: Package,
-    price: IndianRupee,
-  };
-
   return (
     <div className="space-y-8">
-      {/* Dashboard Stats */}
-      {stats && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#00592B]">
-                  <TrendingUp className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">TODAY</p>
-                  <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.todayRevenue.toLocaleString("en-IN")}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#00592B]">
-                  <TrendingUp className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">THIS WEEK</p>
-                  <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.weekRevenue.toLocaleString("en-IN")}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#00592B]">
-                  <IndianRupee className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">30 DAYS</p>
-                  <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.monthRevenue.toLocaleString("en-IN")}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#00592B]">
-                  <Receipt className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">BILLS (30 DAYS)</p>
-                  <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">{stats.monthBills}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#E374C7]">
-                  <CreditCard className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PENDING (CREDIT)</p>
-                  <p className="text-[20px] font-bold text-[#E374C7] [font-family:var(--font-oswald)]">₹{stats.pendingPayments.toLocaleString("en-IN")}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          {stats.topProducts.length > 0 && (
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold mb-2">TOP PRODUCTS (30 DAYS)</p>
-                <div className="space-y-1">
-                  {stats.topProducts.map((p, i) => (
-                    <div key={p.name} className="flex justify-between text-[14px]">
-                      <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
-                        {i + 1}. {p.name}
-                      </span>
-                      <span className="text-[#4D8A6B] [font-family:var(--font-oswald)] font-bold">{p.count}×</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
       {/* Header */}
       <div>
         <h1 className="text-[32px] font-bold uppercase text-white [font-family:var(--font-oswald)]">
@@ -263,9 +112,12 @@ export default function HomePage() {
           type="search"
           placeholder="TYPE A SCHOOL NAME, PRODUCT, OR SIZE..."
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            clearTimeout((window as unknown as { _searchTimer: ReturnType<typeof setTimeout> })._searchTimer);
+            (window as unknown as { _searchTimer: ReturnType<typeof setTimeout> })._searchTimer = setTimeout(() => search(e.target.value), 300);
+          }}
           className="h-14 pl-12 text-[20px]"
-          autoFocus
         />
       </div>
 
@@ -284,6 +136,7 @@ export default function HomePage() {
       {!loading && results.length > 0 && (
         <div className="space-y-2">
           {results.map((result, i) => {
+            const iconMap = { school: School, product: Package, price: IndianRupee };
             const Icon = iconMap[result.type];
             return (
               <Link

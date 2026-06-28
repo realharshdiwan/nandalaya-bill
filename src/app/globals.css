@@ -155,7 +155,7 @@
   --receipt-width: 80mm;
 }
 
-/* Print styles */
+/* Print styles — only receipt prints, everything else hidden */
 @media print {
   @page {
     size: var(--receipt-width) auto;
@@ -172,21 +172,31 @@
     print-color-adjust: exact !important;
   }
 
-  /* Hide non-receipt elements */
+  /* Kill everything except the receipt */
   .no-print,
   aside,
+  aside ~ div,
   header,
   nav,
-  .space-y-6 > .flex:first-child,
-  .space-y-6 > a:first-of-type {
+  .min-h-screen,
+  .min-h-screen > *:not(main) {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
   }
 
-  /* Main container resets */
+  /* Remove sidebar offset, kill green background */
   main {
     padding: 0 !important;
     margin: 0 !important;
     width: var(--receipt-width) !important;
+    max-width: var(--receipt-width) !important;
+    background: white !important;
+  }
+
+  main > div {
+    padding: 0 !important;
     max-width: var(--receipt-width) !important;
   }
 
