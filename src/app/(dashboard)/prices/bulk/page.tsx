@@ -11,13 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -41,7 +34,7 @@ interface Size {
 
 interface ExistingPrice {
   product_id: string;
-  size_id: string;
+  size_id: string | null;
   price: number;
 }
 
@@ -52,8 +45,9 @@ export default function BulkPricePage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [sizes, setSizes] = useState<Size[]>([]);
-  const [selectedSchool, setSelectedSchool] = useState("");
+  const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
   const [existingPrices, setExistingPrices] = useState<ExistingPrice[]>([]);
+  // matrix[productId][sizeId|"__no_size__"] = price string
   const [matrix, setMatrix] = useState<Record<string, Record<string, string>>>({});
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -62,7 +56,7 @@ export default function BulkPricePage() {
     async function load() {
       const [schoolsRes, productsRes, sizesRes] = await Promise.all([
         supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name").order("name"),
+        supabase.from("products").select("id, name").order("sort_order").order("name"),
         supabase.from("sizes").select("id, label, numeric_value").order("numeric_value"),
       ]);
       setSchools(schoolsRes.data || []);
@@ -73,18 +67,20 @@ export default function BulkPricePage() {
     load();
   }, [supabase]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
+  // Load prices from the first selected school as template
   useEffect(() => {
-    if (!selectedSchool) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (selectedSchools.length === 0) {
       setExistingPrices([]);
       setMatrix({});
       return;
     }
     async function loadPrices() {
+      const firstSchool = selectedSchools[0];
       const { data } = await supabase
         .from("price_list")
         .select("product_id, size_id, price")
-        .eq("school_id", selectedSchool)
+        .eq("school_id", firstSchool)
         .eq("is_active", true);
 
       const prices = data || [];
@@ -99,11 +95,33 @@ export default function BulkPricePage() {
           );
           m[p.id][s.id] = existing ? String(existing.price) : "";
         });
+        // NO SIZE column
+        const noSizeExisting = prices.find(
+          (ep) => ep.product_id === p.id && ep.size_id === null
+        );
+        m[p.id]["__no_size__"] = noSizeExisting ? String(noSizeExisting.price) : "";
       });
       setMatrix(m);
     }
     loadPrices();
-  }, [selectedSchool, products, sizes, supabase]);
+  }, [selectedSchools, products, sizes, supabase]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  function toggleSchool(schoolId: string) {
+    setSelectedSchools((prev) =>
+      prev.includes(schoolId)
+        ? prev.filter((id) => id !== schoolId)
+        : [...prev, schoolId]
+    );
+  }
+
+  function selectAllSchools() {
+    setSelectedSchools(schools.map((s) => s.id));
+  }
+
+  function clearSchools() {
+    setSelectedSchools([]);
+  }
 
   function updateCell(productId: string, sizeId: string, value: string) {
     setMatrix((prev) => ({
@@ -116,8 +134,8 @@ export default function BulkPricePage() {
   }
 
   async function handleSave() {
-    if (!selectedSchool) {
-      toast.error("Select a school first");
+    if (selectedSchools.length === 0) {
+      toast.error("Select at least one school");
       return;
     }
 
@@ -125,39 +143,72 @@ export default function BulkPricePage() {
     let upserts = 0;
     let deletes = 0;
 
-    for (const product of products) {
-      for (const size of sizes) {
-        const value = matrix[product.id]?.[size.id];
-        const price = value ? parseFloat(value) : null;
-        const existing = existingPrices.find(
-          (ep) => ep.product_id === product.id && ep.size_id === size.id
+    for (const schoolId of selectedSchools) {
+      for (const product of products) {
+        // Save sized prices
+        for (const size of sizes) {
+          const value = matrix[product.id]?.[size.id];
+          const price = value ? parseFloat(value) : null;
+          const existing = existingPrices.find(
+            (ep) => ep.product_id === product.id && ep.size_id === size.id
+          );
+
+          if (price !== null && price > 0) {
+            const { error } = await supabase.from("price_list").upsert(
+              {
+                school_id: schoolId,
+                product_id: product.id,
+                size_id: size.id,
+                price,
+                is_active: true,
+              },
+              { onConflict: "school_id,product_id,size_id" }
+            );
+            if (!error) upserts++;
+          } else if (existing) {
+            await supabase
+              .from("price_list")
+              .update({ is_active: false })
+              .eq("school_id", schoolId)
+              .eq("product_id", product.id)
+              .eq("size_id", size.id);
+            deletes++;
+          }
+        }
+
+        // Save "no size" price
+        const noSizeValue = matrix[product.id]?.["__no_size__"];
+        const noSizePrice = noSizeValue ? parseFloat(noSizeValue) : null;
+        const existingNoSize = existingPrices.find(
+          (ep) => ep.product_id === product.id && ep.size_id === null
         );
 
-        if (price !== null && price > 0) {
+        if (noSizePrice !== null && noSizePrice > 0) {
           const { error } = await supabase.from("price_list").upsert(
             {
-              school_id: selectedSchool,
+              school_id: schoolId,
               product_id: product.id,
-              size_id: size.id,
-              price,
+              size_id: null,
+              price: noSizePrice,
               is_active: true,
             },
             { onConflict: "school_id,product_id,size_id" }
           );
           if (!error) upserts++;
-        } else if (existing) {
+        } else if (existingNoSize) {
+          // Delete null-size row: use is_active = false + filter
           await supabase
             .from("price_list")
             .update({ is_active: false })
-            .eq("school_id", selectedSchool)
+            .eq("school_id", schoolId)
             .eq("product_id", product.id)
-            .eq("size_id", size.id);
+            .is("size_id", null);
           deletes++;
         }
       }
     }
 
-    toast.success(`Saved ${upserts} prices${deletes > 0 ? `, deactivated ${deletes}` : ""}`);
+    toast.success(`Saved ${upserts} prices to ${selectedSchools.length} school(s)${deletes > 0 ? `, deactivated ${deletes}` : ""}`);
     setLoading(false);
     router.push("/prices");
   }
@@ -166,7 +217,7 @@ export default function BulkPricePage() {
     return count + Object.values(row).filter((v) => v && parseFloat(v) > 0).length;
   }, 0);
 
-  const totalCells = products.length * sizes.length;
+  const totalCells = products.length * (sizes.length + 1); // +1 for NO SIZE column
 
   if (!loaded) {
     return (
@@ -194,27 +245,55 @@ export default function BulkPricePage() {
         </div>
       </div>
 
+      {/* School multi-select */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-[16px]">SELECT SCHOOL</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[16px]">SELECT SCHOOLS ({selectedSchools.length} SELECTED)</CardTitle>
+            <div className="flex gap-2">
+              <Button variant="tertiary" onClick={selectAllSchools} className="text-[12px] h-8">
+                ALL
+              </Button>
+              <Button variant="tertiary" onClick={clearSchools} className="text-[12px] h-8">
+                CLEAR
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "")} items={schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))}>
-            <SelectTrigger className="w-full max-w-md">
-              <SelectValue placeholder="CHOOSE A SCHOOL" />
-            </SelectTrigger>
-            <SelectContent>
-              {schools.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {schools.map((s) => {
+              const isSelected = selectedSchools.includes(s.id);
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => toggleSchool(s.id)}
+                  className={`flex items-center gap-3 rounded-[12px] border-2 px-4 py-3 text-left transition-all [font-family:var(--font-oswald)] uppercase font-bold ${
+                    isSelected
+                      ? "border-black bg-[#00592B] text-white shadow-[2px_2px_0_0_#000]"
+                      : "border-black bg-white text-[#00592B] hover:shadow-[2px_2px_0_0_#000]"
+                  }`}
+                >
+                  <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2 ${
+                    isSelected ? "border-white bg-white" : "border-[#4D8A6B]"
+                  }`}>
+                    {isSelected && (
+                      <svg className="h-3 w-3 text-[#00592B]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className="text-[14px]">
+                    {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </CardContent>
       </Card>
 
-      {selectedSchool && products.length > 0 && sizes.length > 0 && (
+      {selectedSchools.length > 0 && products.length > 0 && (
         <>
           <div className="flex items-center justify-between">
             <p className="text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
@@ -222,7 +301,7 @@ export default function BulkPricePage() {
             </p>
             <Button onClick={handleSave} disabled={loading}>
               <Save className="mr-2 h-4 w-4" />
-              <span>{loading ? "SAVING..." : "SAVE ALL"}</span>
+              <span>{loading ? "SAVING..." : `SAVE TO ${selectedSchools.length} SCHOOL(S)`}</span>
             </Button>
           </div>
 
@@ -238,6 +317,9 @@ export default function BulkPricePage() {
                       {size.label}
                     </th>
                   ))}
+                  <th className="text-center pb-3 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold min-w-[100px] border-l-2 border-[#4D8A6B]">
+                    NO SIZE
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -259,6 +341,17 @@ export default function BulkPricePage() {
                         />
                       </td>
                     ))}
+                    <td className="py-2 px-1 border-l-2 border-[#4D8A6B]">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="₹"
+                        value={matrix[product.id]?.["__no_size__"] || ""}
+                        onChange={(e) => updateCell(product.id, "__no_size__", e.target.value)}
+                        className="w-full text-center h-9 text-[13px] border-[#E374C7]"
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -267,10 +360,10 @@ export default function BulkPricePage() {
         </>
       )}
 
-      {selectedSchool && (products.length === 0 || sizes.length === 0) && (
+      {selectedSchools.length > 0 && products.length === 0 && (
         <div className="text-center py-12">
           <p className="text-[16px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-            {products.length === 0 ? "ADD PRODUCTS FIRST" : "ADD SIZES FIRST"}
+            ADD PRODUCTS FIRST
           </p>
         </div>
       )}

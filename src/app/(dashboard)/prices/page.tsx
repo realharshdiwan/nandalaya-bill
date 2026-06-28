@@ -50,11 +50,11 @@ interface PriceEntry {
   id: string;
   school_id: string;
   product_id: string;
-  size_id: string;
+  size_id: string | null;
   price: number;
   schools: School;
   products: Product;
-  sizes: Size;
+  sizes: Size | null;
 }
 
 export default function PricesPage() {
@@ -112,7 +112,7 @@ export default function PricesPage() {
         ...row,
         schools: Array.isArray(row.schools) ? row.schools[0] : row.schools,
         products: Array.isArray(row.products) ? row.products[0] : row.products,
-        sizes: Array.isArray(row.sizes) ? row.sizes[0] : row.sizes,
+        sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
       })) as PriceEntry[]
     );
   }
@@ -146,7 +146,7 @@ export default function PricesPage() {
     setEditingPrice(price);
     setFormSchool(price.school_id);
     setFormProduct(price.product_id);
-    setFormSize(price.size_id);
+    setFormSize(price.size_id ? price.size_id : "__none__");
     setFormPrice(String(price.price));
     setDialogOpen(true);
   }
@@ -155,10 +155,11 @@ export default function PricesPage() {
     e.preventDefault();
     setLoading(true);
 
+    const actualSizeId = formSize === "__none__" ? null : formSize;
     const payload = {
       school_id: formSchool,
       product_id: formProduct,
-      size_id: formSize,
+      size_id: actualSizeId,
       price: parseFloat(formPrice),
     };
 
@@ -273,7 +274,7 @@ export default function PricesPage() {
                             className="group flex items-center gap-2 rounded-[12px] border-2 border-black px-3 py-2 hover:shadow-[10px_10px_0_0_#000] hover:translate-x-[-2px] hover:translate-y-[-2px]"
                           >
                             <span className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
-                              {entry.sizes?.label}
+                              {entry.sizes?.label || "NO SIZE"}
                             </span>
                             <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] text-[16px]">
                               ₹{entry.price}
@@ -357,13 +358,14 @@ export default function PricesPage() {
             </div>
             <div className="space-y-2">
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
-                SIZE
+                SIZE (OPTIONAL FOR NON-SIZED PRODUCTS)
               </Label>
-              <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")} required items={sizes.map((s) => ({ value: s.id, label: s.label }))}>
+              <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")} items={[{ value: "__none__", label: "NO SIZE" }, ...sizes.map((s) => ({ value: s.id, label: s.label }))]}>
                 <SelectTrigger>
                   <SelectValue placeholder="SELECT SIZE" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">NO SIZE</SelectItem>
                   {sizes.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.label}
@@ -389,7 +391,7 @@ export default function PricesPage() {
             <div className="flex gap-3 justify-end">
               <Button
                 type="submit"
-                disabled={loading || !formSchool || !formProduct || !formSize || !formPrice}
+                disabled={loading || !formSchool || !formProduct || !formPrice}
               >
                 <span>{loading ? "SAVING..." : editingPrice ? "UPDATE" : "ADD"}</span>
               </Button>

@@ -23,13 +23,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Package, Plus, Pencil, Trash2 } from "lucide-react";
+import { Package, Plus, Pencil, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 interface Product {
   id: string;
   name: string;
   category: string;
+  sort_order: number;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -50,15 +51,17 @@ export default function ProductsPage() {
   const [formCategory, setFormCategory] = useState("uniform");
   const [loading, setLoading] = useState(false);
 
+  async function loadProducts() {
+    const { data } = await supabase.from("products").select("id, name, category, sort_order").order("sort_order").order("name");
+    setProducts(data || []);
+  }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function loadProducts() {
-    const { data } = await supabase.from("products").select("id, name, category").order("name");
-    setProducts(data || []);
-  }
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function openAddDialog() {
     setFormName("");
@@ -75,7 +78,8 @@ export default function ProductsPage() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.from("products").insert({ name: formName, category: formCategory });
+    const maxSort = products.reduce((max, p) => Math.max(max, p.sort_order), 0);
+    const { error } = await supabase.from("products").insert({ name: formName, category: formCategory, sort_order: maxSort + 1 });
     if (error) {
       toast.error("Failed to add product: " + error.message);
     } else {
@@ -131,6 +135,26 @@ export default function ProductsPage() {
     setDeleteLoading(false);
   }
 
+  async function moveProduct(index: number, direction: "up" | "down") {
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= products.length) return;
+
+    const current = products[index];
+    const swap = products[newIndex];
+
+    // Swap sort_order values
+    await supabase
+      .from("products")
+      .update({ sort_order: swap.sort_order })
+      .eq("id", current.id);
+    await supabase
+      .from("products")
+      .update({ sort_order: current.sort_order })
+      .eq("id", swap.id);
+
+    await loadProducts();
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -139,7 +163,7 @@ export default function ProductsPage() {
             PRODUCTS
           </h1>
           <p className="mt-1 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-            {products.length} PRODUCTS
+            {products.length} PRODUCTS — DRAG TO REORDER FOR BILLING
           </p>
         </div>
         <Button onClick={openAddDialog}>
@@ -149,12 +173,31 @@ export default function ProductsPage() {
       </div>
 
       {products.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {products.map((product) => (
+        <div className="space-y-2">
+          {products.map((product, index) => (
             <Card key={product.id}>
-              <CardContent className="flex items-center gap-4 p-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-[#00592B]">
-                  <Package className="h-6 w-6 text-white" />
+              <CardContent className="flex items-center gap-4 p-3">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => moveProduct(index, "up")}
+                    disabled={index === 0}
+                    className="text-[#4D8A6B] hover:text-white disabled:opacity-30 disabled:hover:text-[#4D8A6B]"
+                  >
+                    <ChevronUp className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => moveProduct(index, "down")}
+                    disabled={index === products.length - 1}
+                    className="text-[#4D8A6B] hover:text-white disabled:opacity-30 disabled:hover:text-[#4D8A6B]"
+                  >
+                    <ChevronDown className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#00592B] text-[14px] font-bold text-white [font-family:var(--font-oswald)]">
+                  {index + 1}
+                </div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#00592B]">
+                  <Package className="h-5 w-5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase text-[16px]">

@@ -32,6 +32,7 @@ interface School {
 interface Product {
   id: string;
   name: string;
+  sort_order: number;
 }
 
 interface Size {
@@ -42,14 +43,14 @@ interface Size {
 interface PriceEntry {
   product_id: string;
   price: number;
-  sizes: Size;
+  sizes: Size | null;
 }
 
 interface BillItem {
   key: string;
   product_id: string;
   product_name: string;
-  size_id: string;
+  size_id: string | null;
   size_label: string;
   qty: number;
   price: number;
@@ -89,7 +90,7 @@ export default function NewBillPage() {
     async function load() {
       const [schoolsRes, productsRes, sizesRes] = await Promise.all([
         supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name").order("name"),
+        supabase.from("products").select("id, name, sort_order").order("sort_order").order("name"),
         supabase.from("sizes").select("id, label").order("numeric_value"),
       ]);
       setSchools(schoolsRes.data || []);
@@ -114,7 +115,7 @@ export default function NewBillPage() {
     const normalized = (data || []).map((row: any) => ({
       product_id: row.product_id,
       price: row.price,
-      sizes: Array.isArray(row.sizes) ? row.sizes[0] : row.sizes,
+      sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
     }));
     setSchoolPrices(normalized);
   }, [supabase]);
@@ -124,25 +125,40 @@ export default function NewBillPage() {
     loadSchoolPrices(selectedSchool);
   }, [selectedSchool, loadSchoolPrices]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
+  // Auto-fill price when product/size/school changes
   useEffect(() => {
-    if (!addProductId || !addSizeId || !selectedSchool) return;
-    const match = schoolPrices.find(
-      (p) => p.product_id === addProductId && p.sizes?.id === addSizeId
+    if (!addProductId || !selectedSchool) return;
+
+    // If a size is selected, match product + size
+    if (addSizeId) {
+      const match = schoolPrices.find(
+        (p) => p.product_id === addProductId && p.sizes?.id === addSizeId
+      );
+      if (match) {
+        setAddPrice(String(match.price));
+        return;
+      }
+    }
+
+    // No size selected — look for "no size" price (sizes === null)
+    const noSizeMatch = schoolPrices.find(
+      (p) => p.product_id === addProductId && p.sizes === null
     );
-    if (match) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAddPrice(String(match.price));
+    if (noSizeMatch) {
+      setAddPrice(String(noSizeMatch.price));
     }
   }, [addProductId, addSizeId, schoolPrices, selectedSchool]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function addItem() {
-    if (!addProductId || !addSizeId || !addQty || !addPrice) {
-      toast.error("Fill in all item fields");
+    if (!addProductId || !addQty || !addPrice) {
+      toast.error("Fill in product, quantity, and price");
       return;
     }
 
     const product = products.find((p) => p.id === addProductId);
-    const size = sizes.find((s) => s.id === addSizeId);
+    const size = addSizeId ? sizes.find((s) => s.id === addSizeId) : null;
     const qty = parseInt(addQty);
     const price = parseFloat(addPrice);
 
@@ -165,7 +181,7 @@ export default function NewBillPage() {
       key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       product_id: addProductId,
       product_name: product?.name || "",
-      size_id: addSizeId,
+      size_id: addSizeId || null,
       size_label: size?.label || "",
       qty,
       price,
@@ -234,9 +250,9 @@ export default function NewBillPage() {
     const billItems = items.map((item) => ({
       bill_id: bill.id,
       product_id: item.product_id,
-      size_id: item.size_id,
+      size_id: item.size_id || null,
       product_name: item.product_name,
-      size_label: item.size_label,
+      size_label: item.size_label || null,
       qty: item.qty,
       price: item.price,
       subtotal: item.effective_subtotal,
@@ -315,9 +331,9 @@ export default function NewBillPage() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">SIZE</Label>
+                  <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">SIZE (OPTIONAL)</Label>
                   <Select value={addSizeId} onValueChange={(v) => setAddSizeId(v ?? "")} items={sizes.map((s) => ({ value: s.id, label: s.label }))}>
-                    <SelectTrigger><SelectValue placeholder="SIZE" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="SKIP IF NO SIZE" /></SelectTrigger>
                     <SelectContent>
                       {sizes.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                     </SelectContent>
@@ -360,7 +376,7 @@ export default function NewBillPage() {
                   </div>
                 )}
               </div>
-              <Button onClick={addItem} className="mt-3" disabled={!addProductId || !addSizeId}>
+              <Button onClick={addItem} className="mt-3" disabled={!addProductId}>
                 <Plus className="mr-2 h-4 w-4" />
                 <span>ADD ITEM</span>
               </Button>
@@ -380,7 +396,7 @@ export default function NewBillPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
                           {item.product_name}
-                          <span className="ml-2 text-[14px] text-[#4D8A6B]">{item.size_label}</span>
+                          {item.size_label && <span className="ml-2 text-[14px] text-[#4D8A6B]">{item.size_label}</span>}
                         </p>
                         <p className="text-[14px] text-[#003F1E] [font-family:var(--font-oswald)] uppercase font-bold">
                           {item.qty} × ₹{item.price} = ₹{item.subtotal}
