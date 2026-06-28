@@ -8,6 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
 import VoidBillButton from "./void-bill-button";
+import PrintButton from "./print-button";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,8 @@ export default async function BillDetailPage({
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      <div className="flex items-start justify-between">
+      {/* Header — hidden during print */}
+      <div className="flex items-start justify-between no-print">
         <div className="space-y-1">
           <Link
             href="/bills"
@@ -59,12 +61,16 @@ export default async function BillDetailPage({
             )}
           </div>
         </div>
-        {!isVoided && (
-          <VoidBillButton billId={bill.id} billNumber={bill.bill_number} />
-        )}
+        <div className="flex items-center gap-2">
+          <PrintButton />
+          {!isVoided && (
+            <VoidBillButton billId={bill.id} billNumber={bill.bill_number} />
+          )}
+        </div>
       </div>
 
-      <Card className={isVoided ? "opacity-60" : ""}>
+      {/* Receipt — this is what prints */}
+      <Card className={`receipt-print ${isVoided ? "opacity-60" : ""}`}>
         <CardContent className="p-6 space-y-6">
           {/* Shop header */}
           <div className="text-center border-b-2 border-black pb-4">
