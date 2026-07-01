@@ -209,7 +209,7 @@ export default function SuppliersPage() {
               Are you sure you want to delete &quot;{deleteTarget?.name}&quot;?
             </p>
             <div className="flex gap-3 justify-end">
-              <Button variant="tertiary" onClick={() => setDeleteTarget(null)}>CANCEL</Button>
+              <Button variant="tertiary" onClick={() => setDeleteTarget(null)}><span>CANCEL</span></Button>
               <Button onClick={handleDelete} disabled={deleteLoading} className="bg-[#C42424] hover:bg-[#A01C1C]">
                 <span>{deleteLoading ? "DELETING..." : "DELETE"}</span>
               </Button>

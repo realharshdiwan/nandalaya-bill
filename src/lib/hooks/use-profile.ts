@@ -31,10 +31,18 @@ export function useProfile() {
       if (data) {
         setProfile(data as Profile);
       } else {
-        // Auto-create profile as staff if missing
+        // Check if any owner already exists
+        const { count: ownerCount } = await supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("role", "owner");
+
+        // First user becomes owner; everyone else gets staff
+        const role = ownerCount === 0 ? "owner" : "staff";
+
         const { data: newProfile } = await supabase
           .from("profiles")
-          .insert({ id: user.id, role: "staff", display_name: user.email?.split("@")[0] || null })
+          .insert({ id: user.id, role, display_name: user.email?.split("@")[0] || null })
           .select("id, role, display_name")
           .single();
 

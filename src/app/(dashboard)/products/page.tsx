@@ -407,7 +407,7 @@ export default function ProductsPage() {
             </p>
             <div className="flex gap-3 justify-end">
               <Button variant="tertiary" onClick={() => setDeleteProduct(null)}>
-                CANCEL
+                <span>CANCEL</span>
               </Button>
               <Button onClick={handleDelete} disabled={deleteLoading} className="bg-[#C42424] hover:bg-[#A01C1C]">
                 <span>{deleteLoading ? "DELETING..." : "DELETE"}</span>

@@ -105,7 +105,7 @@ export default async function BillsPage({
           return (
             <Link key={preset.value} href={href}>
               <Button variant={isActive ? "default" : "tertiary"} className="text-[12px] h-8">
-                {preset.label}
+                <span>{preset.label}</span>
               </Button>
             </Link>
           );

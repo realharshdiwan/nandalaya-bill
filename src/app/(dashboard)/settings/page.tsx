@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff } from "lucide-react";
+import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 interface Size {
@@ -30,7 +30,6 @@ interface TeamMember {
   id: string;
   display_name: string | null;
   role: "owner" | "staff";
-  email?: string;
 }
 
 export default function SettingsPage() {
@@ -74,7 +73,6 @@ export default function SettingsPage() {
       .order("role");
 
     if (profiles) {
-      // Get emails from auth (only possible via admin — show display_name instead)
       setTeamMembers(profiles.map((p) => ({
         id: p.id,
         display_name: p.display_name,
@@ -217,26 +215,11 @@ export default function SettingsPage() {
           SETTINGS
         </h1>
         <p className="mt-1 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-          {isOwner ? "MANAGE YOUR SHOP" : "OWNER ACCESS REQUIRED FOR FULL SETTINGS"}
+          {isOwner ? "MANAGE YOUR SHOP" : "READ-ONLY — ASK OWNER TO MAKE CHANGES"}
         </p>
       </div>
 
-      {!profileLoading && !isOwner && (
-        <Card className="max-w-lg">
-          <CardContent className="p-6 text-center">
-            <Shield className="mx-auto h-8 w-8 text-[#E374C7] mb-3" />
-            <p className="text-[16px] font-bold text-white [font-family:var(--font-oswald)] uppercase">
-              OWNER ACCESS REQUIRED
-            </p>
-            <p className="text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase mt-2">
-              Only the shop owner can manage settings, sizes, and payment configuration.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {isOwner && (
-        <>
+      {/* SIZES — visible to everyone */}
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
@@ -245,45 +228,52 @@ export default function SettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <form onSubmit={editingSize ? handleEdit : handleAdd} className="flex gap-3">
-            <Input
-              placeholder="SIZE LABEL (E.G. 28, M, L)"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
-              required
-              className="flex-1"
-            />
-            <Input
-              type="number"
-              placeholder="SORT ORDER"
-              value={newNumeric}
-              onChange={(e) => setNewNumeric(e.target.value)}
-              className="w-24"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              className="shrink-0"
-              disabled={loading || !newLabel}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            {editingSize && (
+          {isOwner ? (
+            <form onSubmit={editingSize ? handleEdit : handleAdd} className="flex gap-3">
+              <Input
+                placeholder="SIZE LABEL (E.G. 28, M, L)"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                required
+                className="flex-1"
+              />
+              <Input
+                type="number"
+                placeholder="SORT ORDER"
+                value={newNumeric}
+                onChange={(e) => setNewNumeric(e.target.value)}
+                className="w-24"
+              />
               <Button
-                type="button"
+                type="submit"
                 size="icon"
-                variant="tertiary"
                 className="shrink-0"
-                onClick={() => {
-                  setEditingSize(null);
-                  setNewLabel("");
-                  setNewNumeric("");
-                }}
+                disabled={loading || !newLabel}
               >
-                ✕
+                <Plus className="h-4 w-4" />
               </Button>
-            )}
-          </form>
+              {editingSize && (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="tertiary"
+                  className="shrink-0"
+                  onClick={() => {
+                    setEditingSize(null);
+                    setNewLabel("");
+                    setNewNumeric("");
+                  }}
+                >
+                  <span>✕</span>
+                </Button>
+              )}
+            </form>
+          ) : (
+            <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold flex items-center gap-2">
+              <Lock className="h-3 w-3" />
+              ONLY OWNER CAN ADD OR EDIT SIZES
+            </p>
+          )}
 
           <div className="space-y-2">
             {sizes.map((size) => (
@@ -301,26 +291,29 @@ export default function SettingsPage() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openEditDialog(size)}
-                    className="text-[#4D8A6B] hover:text-[#0023D1]"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => openDeleteDialog(size)}
-                    className="text-[#4D8A6B] hover:text-[#C42424]"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                {isOwner && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openEditDialog(size)}
+                      className="text-[#4D8A6B] hover:text-[#0023D1]"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => openDeleteDialog(size)}
+                      className="text-[#4D8A6B] hover:text-[#C42424]"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
+      {/* UPI — visible to everyone, editable by owner only */}
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
@@ -332,25 +325,32 @@ export default function SettingsPage() {
           <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
             UPI ID FOR QR CODE PAYMENTS
           </p>
-          <div className="flex gap-3">
-            <Input
-              placeholder="YOUR-UPI-ID@paytm (e.g. nandalaya@upi)"
-              value={upiId}
-              onChange={(e) => setUpiId(e.target.value)}
-              className="flex-1"
-            />
-            <Button onClick={saveUpi} disabled={upiLoading || !upiId}>
-              <span>{upiLoading ? "SAVING..." : "SAVE"}</span>
-            </Button>
-          </div>
+          {isOwner ? (
+            <div className="flex gap-3">
+              <Input
+                placeholder="YOUR-UPI-ID@paytm (e.g. nandalaya@upi)"
+                value={upiId}
+                onChange={(e) => setUpiId(e.target.value)}
+                className="flex-1"
+              />
+              <Button onClick={saveUpi} disabled={upiLoading || !upiId}>
+                <span>{upiLoading ? "SAVING..." : "SAVE"}</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="rounded-[12px] border-2 border-black px-3 py-2">
+              <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+                {upiId || "NOT CONFIGURED"}
+              </p>
+            </div>
+          )}
           <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
             Set your UPI VPA to generate QR codes on bills for exact-amount payments
           </p>
         </CardContent>
       </Card>
-        </>
-      )}
 
+      {/* TEAM — owner only */}
       {isOwner && (
         <Card className="max-w-lg">
           <CardHeader>
@@ -390,9 +390,9 @@ export default function SettingsPage() {
                       onClick={() => toggleRole(member)}
                     >
                       {member.role === "owner" ? (
-                        <><ShieldOff className="mr-1 h-3 w-3" /> DEMOTE</>
+                        <><ShieldOff className="mr-1 h-3 w-3" /><span>DEMOTE</span></>
                       ) : (
-                        <><Shield className="mr-1 h-3 w-3" /> PROMOTE</>
+                        <><Shield className="mr-1 h-3 w-3" /><span>PROMOTE</span></>
                       )}
                     </Button>
                   </div>
@@ -406,6 +406,7 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      {/* THERMAL PRINTER — owner only */}
       {isOwner && (
         <ThermalPrinterCard />
       )}
@@ -422,14 +423,14 @@ export default function SettingsPage() {
             {priceCount > 0 && (
               <div className="rounded-[12px] border-2 border-[#C42424] bg-red-50 p-3">
                 <p className="text-[14px] font-bold text-[#C42424] [font-family:var(--font-oswald)] uppercase">
-                  ⚠ WARNING: This size is used in {priceCount} price{priceCount !== 1 ? "s" : ""}.
+                  WARNING: This size is used in {priceCount} price{priceCount !== 1 ? "s" : ""}.
                   Deleting it will permanently remove those prices.
                 </p>
               </div>
             )}
             <div className="flex gap-3 justify-end">
               <Button variant="tertiary" onClick={() => { setDeleteTarget(null); setPriceCount(0); }}>
-                CANCEL
+                <span>CANCEL</span>
               </Button>
               <Button onClick={confirmDelete} disabled={deleteLoading} className="bg-[#C42424] hover:bg-[#A01C1C]">
                 <span>{deleteLoading ? "DELETING..." : "DELETE"}</span>

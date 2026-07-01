@@ -105,7 +105,7 @@ export default function DeleteSchoolButton({ schoolId, schoolName }: Props) {
             </div>
             <div className="flex gap-3 justify-end">
               <Button variant="tertiary" onClick={() => { setOpen(false); setConfirmName(""); }}>
-                CANCEL
+                <span>CANCEL</span>
               </Button>
               <Button
                 onClick={handleDelete}

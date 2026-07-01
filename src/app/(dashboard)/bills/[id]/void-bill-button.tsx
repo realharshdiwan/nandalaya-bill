@@ -88,7 +88,7 @@ export default function VoidBillButton({ billId, billNumber }: Props) {
             </div>
             <div className="flex gap-3 justify-end">
               <Button variant="tertiary" onClick={() => { setOpen(false); setConfirmNumber(""); }}>
-                CANCEL
+                <span>CANCEL</span>
               </Button>
               <Button
                 onClick={handleVoid}

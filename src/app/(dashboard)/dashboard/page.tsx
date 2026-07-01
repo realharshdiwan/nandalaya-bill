@@ -230,9 +230,8 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Daily Closing Summary — owner only */}
       {stats && isOwner && (
-        <>
-        {/* Daily Closing Summary */}
         <Card className="mt-2">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -243,19 +242,19 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-[12px] border-2 border-black bg-white p-3">
-                <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">💵 CASH</p>
+                <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">CASH</p>
                 <p className="text-[18px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.cashToday.toLocaleString("en-IN")}</p>
               </div>
               <div className="rounded-[12px] border-2 border-black bg-white p-3">
-                <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">📱 UPI</p>
+                <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">UPI</p>
                 <p className="text-[18px] font-bold text-[#0023D1] [font-family:var(--font-oswald)]">₹{stats.upiToday.toLocaleString("en-IN")}</p>
               </div>
               <div className="rounded-[12px] border-2 border-black bg-white p-3">
-                <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">💳 CARD</p>
+                <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">CARD</p>
                 <p className="text-[18px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.cardToday.toLocaleString("en-IN")}</p>
               </div>
               <div className="rounded-[12px] border-2 border-black bg-white p-3">
-                <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">📋 CREDIT</p>
+                <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">CREDIT</p>
                 <p className="text-[18px] font-bold text-[#E374C7] [font-family:var(--font-oswald)]">₹{stats.creditToday.toLocaleString("en-IN")}</p>
               </div>
             </div>
@@ -267,30 +266,29 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+      )}
 
-        {/* Low Stock Alerts */}
-        {stats.lowStockProducts.length > 0 && (
-          <Card className="mt-2">
-            <CardContent className="p-4">
-              <p className="text-[14px] text-[#C42424] [font-family:var(--font-oswald)] uppercase font-bold mb-3">
-                ⚠ LOW STOCK ALERTS ({stats.lowStockProducts.length})
-              </p>
-              <div className="space-y-2">
-                {stats.lowStockProducts.map((p) => (
-                  <div key={p.name} className="flex justify-between items-center text-[14px]">
-                    <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
-                      {p.name}
-                    </span>
-                    <span className={`font-bold [font-family:var(--font-oswald)] ${p.current_stock === 0 ? "text-[#C42424]" : "text-[#E374C7]"}`}>
-                      {p.current_stock === 0 ? "OUT OF STOCK" : `${p.current_stock} LEFT`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        </>
+      {/* Low Stock Alerts — visible to all roles */}
+      {stats && stats.lowStockProducts.length > 0 && (
+        <Card className="mt-2">
+          <CardContent className="p-4">
+            <p className="text-[14px] text-[#C42424] [font-family:var(--font-oswald)] uppercase font-bold mb-3">
+              LOW STOCK ALERTS ({stats.lowStockProducts.length})
+            </p>
+            <div className="space-y-2">
+              {stats.lowStockProducts.map((p) => (
+                <div key={p.name} className="flex justify-between items-center text-[14px]">
+                  <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+                    {p.name}
+                  </span>
+                  <span className={`font-bold [font-family:var(--font-oswald)] ${p.current_stock === 0 ? "text-[#C42424]" : "text-[#E374C7]"}`}>
+                    {p.current_stock === 0 ? "OUT OF STOCK" : `${p.current_stock} LEFT`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

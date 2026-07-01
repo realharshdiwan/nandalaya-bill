@@ -267,10 +267,10 @@ export default function BulkPricePage() {
             <CardTitle className="text-[16px]">SELECT SCHOOLS ({selectedSchools.length} SELECTED)</CardTitle>
             <div className="flex gap-2">
               <Button variant="tertiary" onClick={selectAllSchools} className="text-[12px] h-8">
-                ALL
+                <span>ALL</span>
               </Button>
               <Button variant="tertiary" onClick={clearSchools} className="text-[12px] h-8">
-                CLEAR
+                <span>CLEAR</span>
               </Button>
             </div>
           </div>
