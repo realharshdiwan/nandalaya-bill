@@ -75,6 +75,9 @@ export default function NewBillPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [splitCash, setSplitCash] = useState("");
+  const [splitUpi, setSplitUpi] = useState("");
+  const [splitCredit, setSplitCredit] = useState("");
   const [discount, setDiscount] = useState("0");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<BillItem[]>([]);
@@ -254,6 +257,21 @@ export default function NewBillPage() {
       return;
     }
 
+    if (paymentMethod === "split") {
+      const cashAmt = parseFloat(splitCash) || 0;
+      const upiAmt = parseFloat(splitUpi) || 0;
+      const creditAmt = parseFloat(splitCredit) || 0;
+      const splitTotal = cashAmt + upiAmt + creditAmt;
+      if (Math.abs(splitTotal - total) >= 0.01) {
+        toast.error(`Payment amounts (₹${splitTotal.toFixed(2)}) don't match bill total (₹${total.toFixed(2)})`);
+        return;
+      }
+      if (splitTotal === 0) {
+        toast.error("Enter at least one payment amount");
+        return;
+      }
+    }
+
     setLoading(true);
 
     const { data: billNumber, error: bnError } = await supabase.rpc("generate_bill_number");
@@ -275,6 +293,16 @@ export default function NewBillPage() {
         discount: discountNum,
         total,
         payment_method: paymentMethod,
+        payment_details: paymentMethod === "split" ? (() => {
+          const details: { method: string; amount: number }[] = [];
+          const cashAmt = parseFloat(splitCash) || 0;
+          const upiAmt = parseFloat(splitUpi) || 0;
+          const creditAmt = parseFloat(splitCredit) || 0;
+          if (cashAmt > 0) details.push({ method: "cash", amount: cashAmt });
+          if (upiAmt > 0) details.push({ method: "upi", amount: upiAmt });
+          if (creditAmt > 0) details.push({ method: "credit", amount: creditAmt });
+          return details.length > 0 ? details : null;
+        })() : null,
         notes: notes || null,
       })
       .select("id")
@@ -487,16 +515,79 @@ export default function NewBillPage() {
             <CardContent className="space-y-3">
               <div>
                 <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">METHOD</Label>
-                <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "cash")} items={[{ value: "cash", label: "CASH" }, { value: "upi", label: "UPI" }, { value: "card", label: "CARD" }, { value: "credit", label: "CREDIT" }]}>
+                <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "cash")} items={[{ value: "cash", label: "CASH" }, { value: "upi", label: "UPI" }, { value: "card", label: "CARD" }, { value: "credit", label: "CREDIT" }, { value: "split", label: "SPLIT" }]}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">CASH</SelectItem>
                     <SelectItem value="upi">UPI</SelectItem>
                     <SelectItem value="card">CARD</SelectItem>
                     <SelectItem value="credit">CREDIT</SelectItem>
+                    <SelectItem value="split">SPLIT (CASH + UPI + CREDIT)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {paymentMethod === "split" && (
+                <div className="space-y-3 rounded-[12px] border-2 border-[#E374C7] bg-pink-50 p-3">
+                  <p className="text-[12px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">
+                    TOTAL: ₹{total.toFixed(2)} — ENTER EACH PAYMENT
+                  </p>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-16">💵 CASH</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                        value={splitCash}
+                        onChange={(e) => setSplitCash(e.target.value)}
+                        className="flex-1"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-16">📱 UPI</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                        value={splitUpi}
+                        onChange={(e) => setSplitUpi(e.target.value)}
+                        className="flex-1"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-16">📋 CREDIT</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                        value={splitCredit}
+                        onChange={(e) => setSplitCredit(e.target.value)}
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                  {(() => {
+                    const cashAmt = parseFloat(splitCash) || 0;
+                    const upiAmt = parseFloat(splitUpi) || 0;
+                    const creditAmt = parseFloat(splitCredit) || 0;
+                    const splitTotal = cashAmt + upiAmt + creditAmt;
+                    const matches = Math.abs(splitTotal - total) < 0.01;
+                    return (
+                      <div className={`flex justify-between items-center text-[14px] font-bold [font-family:var(--font-oswald)] uppercase ${
+                        matches ? "text-[#00592B]" : "text-[#C42424]"
+                      }`}>
+                        <span>ENTERED: ₹{splitTotal.toFixed(2)}</span>
+                        <span>{matches ? "✓ MATCHES" : `≠ ₹${(total - splitTotal).toFixed(2)} REMAINING`}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               <div>
                 <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">DISCOUNT (₹)</Label>
                 <Input type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} />

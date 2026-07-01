@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, Pencil } from "lucide-react";
+import { Settings, Plus, Trash2, Pencil, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 
 interface Size {
@@ -34,10 +34,13 @@ export default function SettingsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Size | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [priceCount, setPriceCount] = useState(0);
+  const [upiId, setUpiId] = useState("");
+  const [upiLoading, setUpiLoading] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
     loadSizes();
+    loadUpi();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -47,6 +50,28 @@ export default function SettingsPage() {
       .select("id, label, numeric_value")
       .order("numeric_value");
     setSizes(data || []);
+  }
+
+  async function loadUpi() {
+    const { data } = await supabase
+      .from("shop_config")
+      .select("value")
+      .eq("key", "upi_id")
+      .single();
+    if (data) setUpiId(data.value);
+  }
+
+  async function saveUpi() {
+    setUpiLoading(true);
+    const { error } = await supabase
+      .from("shop_config")
+      .upsert({ key: "upi_id", value: upiId }, { onConflict: "key" });
+    if (error) {
+      toast.error("Failed to save UPI ID: " + error.message);
+    } else {
+      toast.success("UPI ID saved");
+    }
+    setUpiLoading(false);
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -230,6 +255,34 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle>
+            <Smartphone className="h-5 w-5 inline mr-2" />
+            PAYMENT SETTINGS
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+            UPI ID FOR QR CODE PAYMENTS
+          </p>
+          <div className="flex gap-3">
+            <Input
+              placeholder="YOUR-UPI-ID@paytm (e.g. nandalaya@upi)"
+              value={upiId}
+              onChange={(e) => setUpiId(e.target.value)}
+              className="flex-1"
+            />
+            <Button onClick={saveUpi} disabled={upiLoading || !upiId}>
+              <span>{upiLoading ? "SAVING..." : "SAVE"}</span>
+            </Button>
+          </div>
+          <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
+            Set your UPI VPA to generate QR codes on bills for exact-amount payments
+          </p>
         </CardContent>
       </Card>
 

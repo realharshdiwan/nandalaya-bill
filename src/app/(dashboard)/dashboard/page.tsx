@@ -6,7 +6,7 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-import { TrendingUp, IndianRupee, Receipt, CreditCard } from "lucide-react";
+import { TrendingUp, IndianRupee, Receipt, CreditCard, Banknote, Smartphone } from "lucide-react";
 
 interface DashboardStats {
   todayRevenue: number;
@@ -14,6 +14,8 @@ interface DashboardStats {
   monthRevenue: number;
   monthBills: number;
   pendingPayments: number;
+  cashToday: number;
+  upiToday: number;
   topProducts: { name: string; count: number }[];
 }
 
@@ -30,12 +32,13 @@ export default function DashboardPage() {
       const monthStart = new Date(now);
       monthStart.setDate(monthStart.getDate() - 30);
 
-      const [todayRes, weekRes, monthRes, pendingRes, topRes] = await Promise.all([
+      const [todayRes, weekRes, monthRes, pendingRes, topRes, todayBillsRes] = await Promise.all([
         supabase.from("bills").select("total").eq("status", "active").gte("created_at", todayStart),
         supabase.from("bills").select("total").eq("status", "active").gte("created_at", weekStart.toISOString()),
         supabase.from("bills").select("total").eq("status", "active").gte("created_at", monthStart.toISOString()),
         supabase.from("bills").select("total").eq("status", "active").eq("payment_method", "credit").gte("created_at", monthStart.toISOString()),
         supabase.from("bill_items").select("product_name").gte("created_at", monthStart.toISOString()),
+        supabase.from("bills").select("total, payment_method, payment_details").eq("status", "active").gte("created_at", todayStart),
       ]);
 
       const todayRevenue = todayRes.data?.reduce((sum, b) => sum + (b.total || 0), 0) || 0;
@@ -43,6 +46,23 @@ export default function DashboardPage() {
       const monthRevenue = monthRes.data?.reduce((sum, b) => sum + (b.total || 0), 0) || 0;
       const monthBills = monthRes.data?.length || 0;
       const pendingPayments = pendingRes.data?.reduce((sum, b) => sum + (b.total || 0), 0) || 0;
+
+      // Cash/UPI today — handles split payments via payment_details
+      let cashToday = 0;
+      let upiToday = 0;
+      todayBillsRes.data?.forEach((b) => {
+        if (b.payment_method === "cash") {
+          cashToday += b.total || 0;
+        } else if (b.payment_method === "upi") {
+          upiToday += b.total || 0;
+        } else if (b.payment_method === "split" && b.payment_details) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (b.payment_details as any[]).forEach((p) => {
+            if (p.method === "cash") cashToday += p.amount || 0;
+            if (p.method === "upi") upiToday += p.amount || 0;
+          });
+        }
+      });
 
       const productCounts: Record<string, number> = {};
       topRes.data?.forEach((item) => {
@@ -55,7 +75,7 @@ export default function DashboardPage() {
         .slice(0, 5)
         .map(([name, count]) => ({ name, count }));
 
-      setStats({ todayRevenue, weekRevenue, monthRevenue, monthBills, pendingPayments, topProducts });
+      setStats({ todayRevenue, weekRevenue, monthRevenue, monthBills, pendingPayments, cashToday, upiToday, topProducts });
     }
     loadStats();
   }, [supabase]);
@@ -82,6 +102,32 @@ export default function DashboardPage() {
                 <div>
                   <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">TODAY</p>
                   <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.todayRevenue.toLocaleString("en-IN")}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#E374C7]">
+                  <Banknote className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">CASH TODAY</p>
+                  <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.cashToday.toLocaleString("en-IN")}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#0023D1]">
+                  <Smartphone className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">UPI TODAY</p>
+                  <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.upiToday.toLocaleString("en-IN")}</p>
                 </div>
               </div>
             </CardContent>

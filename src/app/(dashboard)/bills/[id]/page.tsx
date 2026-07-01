@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
+import QRCode from "qrcode";
 import VoidBillButton from "./void-bill-button";
 import PrintButton from "./print-button";
 
@@ -39,6 +40,49 @@ export default async function BillDetailPage({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hasItemDiscounts = items?.some((item: any) => item.discount_amount > 0);
 
+  // Determine if UPI is part of payment
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const paymentDetails = bill.payment_details as any[] | null;
+  const hasUpi =
+    bill.payment_method === "upi" ||
+    bill.payment_method === "split" ||
+    (paymentDetails && paymentDetails.some((p) => p.method === "upi"));
+
+  // Generate QR code if UPI is involved
+  let qrDataUri: string | null = null;
+  let upiAmount = bill.total;
+
+  if (hasUpi && paymentDetails) {
+    // For split: QR shows only the UPI portion
+    const upiPart = paymentDetails.find((p) => p.method === "upi");
+    if (upiPart) upiAmount = upiPart.amount;
+  }
+
+  if (hasUpi) {
+    const { data: config } = await supabase
+      .from("shop_config")
+      .select("value")
+      .eq("key", "upi_id")
+      .single();
+
+    const upiId = config?.value || "";
+    if (upiId) {
+      const params = new URLSearchParams({
+        pa: upiId,
+        pn: "NANDALAYA",
+        am: upiAmount.toFixed(2),
+        tn: bill.bill_number,
+        cu: "INR",
+      });
+      const uri = `upi://pay?${params.toString()}`;
+      qrDataUri = await QRCode.toDataURL(uri, {
+        width: 256,
+        margin: 1,
+        color: { dark: "#000000", light: "#FFFFFF" },
+      });
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       {/* Header — hidden during print */}
@@ -55,7 +99,7 @@ export default async function BillDetailPage({
             <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)]">
               {bill.bill_number}
             </h1>
-            <Badge>{bill.payment_method}</Badge>
+            <Badge>{bill.payment_method === "split" ? "SPLIT" : bill.payment_method}</Badge>
             {isVoided && (
               <Badge className="bg-[#C42424]">VOIDED</Badge>
             )}
@@ -68,6 +112,60 @@ export default async function BillDetailPage({
           )}
         </div>
       </div>
+
+      {/* QR Code — screen only */}
+      {hasUpi && qrDataUri && !isVoided && (
+        <Card className="no-print">
+          <CardContent className="p-6 flex flex-col items-center gap-3">
+            <p className="text-[16px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">
+              SCAN TO PAY
+            </p>
+            <p className="text-[28px] font-bold text-[#E374C7] [font-family:var(--font-oswald)]">
+              ₹{upiAmount}
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={qrDataUri}
+              alt="UPI QR Code"
+              className="h-[256px] w-[256px] rounded-[12px] border-2 border-black"
+            />
+            <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase">
+              AMOUNT IS LOCKED — CUSTOMER CANNOT CHANGE IT
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Payment breakdown — screen only */}
+      {paymentDetails && paymentDetails.length > 0 && (
+        <Card className="no-print">
+          <CardContent className="p-4">
+            <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold mb-3">
+              PAYMENT BREAKDOWN
+            </p>
+            <div className="space-y-2">
+              {paymentDetails.map((p: { method: string; amount: number }, i: number) => (
+                <div key={i} className="flex justify-between items-center text-[14px]">
+                  <span className="text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">
+                    {p.method === "cash" && "💵 "}
+                    {p.method === "upi" && "📱 "}
+                    {p.method === "card" && "💳 "}
+                    {p.method === "credit" && "📋 "}
+                    {p.method}
+                  </span>
+                  <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)]">
+                    ₹{p.amount}
+                  </span>
+                </div>
+              ))}
+              <div className="flex justify-between items-center text-[16px] border-t-2 border-black pt-2">
+                <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">TOTAL PAID</span>
+                <span className="font-bold text-[#E374C7] [font-family:var(--font-oswald)]">₹{bill.total}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Receipt — this is what prints */}
       <Card className={`receipt-print ${isVoided ? "opacity-60" : ""}`}>
@@ -171,6 +269,19 @@ export default async function BillDetailPage({
               <span className="text-[#E374C7] [font-family:var(--font-oswald)]">₹{bill.total}</span>
             </div>
           </div>
+
+          {/* Payment on receipt */}
+          {paymentDetails && paymentDetails.length > 0 && (
+            <div className="border-t-2 border-black pt-4">
+              <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold mb-2">PAID</p>
+              {paymentDetails.map((p: { method: string; amount: number }, i: number) => (
+                <div key={i} className="flex justify-between text-[14px]">
+                  <span className="text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">{p.method}</span>
+                  <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{p.amount}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {bill.notes && (
             <div className="border-t-2 border-black pt-4">
