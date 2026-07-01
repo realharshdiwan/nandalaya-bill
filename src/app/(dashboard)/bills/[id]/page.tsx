@@ -12,6 +12,7 @@ import VoidBillButton from "./void-bill-button";
 import PrintButton from "./print-button";
 import MarkPaidButton from "./mark-paid-button";
 import EditBillButton from "./edit-bill-button";
+import ThermalPrintButton from "./thermal-print-button";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,12 @@ export default async function BillDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("role").eq("id", user.id).single()
+    : { data: null };
+  const isOwner = profile?.role === "owner";
 
   const { data: bill } = await supabase
     .from("bills")
@@ -129,6 +136,22 @@ export default async function BillDetailPage({
           {!isVoided && <MarkPaidButton billId={bill.id} isPaid={bill.is_paid} />}
           <PrintButton />
           {!isVoided && (
+            <ThermalPrintButton
+              bill={{
+                bill_number: bill.bill_number,
+                created_at: bill.created_at,
+                customer_name: bill.customer_name,
+                customer_phone: bill.customer_phone,
+                subtotal: bill.subtotal,
+                discount: bill.discount,
+                total: bill.total,
+                payment_method: bill.payment_method,
+                notes: bill.notes,
+              }}
+              items={items || []}
+            />
+          )}
+          {!isVoided && isOwner && (
             <VoidBillButton billId={bill.id} billNumber={bill.bill_number} />
           )}
         </div>

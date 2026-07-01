@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useProfile } from "@/lib/hooks/use-profile";
 import {
   Card,
   CardContent,
@@ -26,6 +27,7 @@ interface DashboardStats {
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const supabase = createClient();
+  const { isOwner } = useProfile();
 
   useEffect(() => {
     async function loadStats() {
@@ -124,32 +126,36 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#E374C7]">
-                  <Banknote className="h-5 w-5 text-white" />
+          {isOwner && (
+            <>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#E374C7]">
+                    <Banknote className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">CASH TODAY</p>
+                    <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.cashToday.toLocaleString("en-IN")}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">CASH TODAY</p>
-                  <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.cashToday.toLocaleString("en-IN")}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#0023D1]">
+                    <Smartphone className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">UPI TODAY</p>
+                    <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.upiToday.toLocaleString("en-IN")}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#0023D1]">
-                  <Smartphone className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">UPI TODAY</p>
-                  <p className="text-[20px] font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{stats.upiToday.toLocaleString("en-IN")}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+            </>
+          )}
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -189,19 +195,21 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#E374C7]">
-                  <CreditCard className="h-5 w-5 text-white" />
+          {isOwner && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[#E374C7]">
+                    <CreditCard className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PENDING (CREDIT)</p>
+                    <p className="text-[20px] font-bold text-[#E374C7] [font-family:var(--font-oswald)]">₹{stats.pendingPayments.toLocaleString("en-IN")}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PENDING (CREDIT)</p>
-                  <p className="text-[20px] font-bold text-[#E374C7] [font-family:var(--font-oswald)]">₹{stats.pendingPayments.toLocaleString("en-IN")}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
           {stats.topProducts.length > 0 && (
             <Card>
               <CardContent className="p-4">
@@ -222,7 +230,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {stats && (
+      {stats && isOwner && (
         <>
         {/* Daily Closing Summary */}
         <Card className="mt-2">

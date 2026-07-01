@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { getCartCount } from "@/lib/cart";
+import { useProfile } from "@/lib/hooks/use-profile";
 import {
   Home,
   LayoutDashboard,
@@ -19,16 +20,16 @@ import {
   BoxesIcon,
 } from "lucide-react";
 
-const navItems = [
-  { href: "/", label: "Search", icon: Home },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/schools", label: "Schools", icon: School },
-  { href: "/products", label: "Products", icon: Package },
-  { href: "/prices", label: "Prices", icon: IndianRupee },
-  { href: "/bills", label: "Bills", icon: Receipt },
-  { href: "/inventory", label: "Inventory", icon: BoxesIcon },
-  { href: "/suppliers", label: "Suppliers", icon: Truck },
-  { href: "/settings", label: "Settings", icon: Settings },
+const allNavItems = [
+  { href: "/", label: "Search", icon: Home, ownerOnly: false },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ownerOnly: false },
+  { href: "/schools", label: "Schools", icon: School, ownerOnly: false },
+  { href: "/products", label: "Products", icon: Package, ownerOnly: false },
+  { href: "/prices", label: "Prices", icon: IndianRupee, ownerOnly: false },
+  { href: "/bills", label: "Bills", icon: Receipt, ownerOnly: false },
+  { href: "/inventory", label: "Inventory", icon: BoxesIcon, ownerOnly: false },
+  { href: "/suppliers", label: "Suppliers", icon: Truck, ownerOnly: false },
+  { href: "/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
 
 export function Sidebar({
@@ -42,6 +43,9 @@ export function Sidebar({
   const router = useRouter();
   const supabase = createClient();
   const [cartCount, setCartCount] = useState(0);
+  const { isOwner, loading: profileLoading } = useProfile();
+
+  const navItems = allNavItems.filter((item) => !item.ownerOnly || isOwner);
 
   const refreshCartCount = useCallback(() => {
     setCartCount(getCartCount());
@@ -121,7 +125,18 @@ export function Sidebar({
         </nav>
 
         {/* Sign out */}
-        <div className="border-t-4 border-black px-4 py-4">
+        <div className="border-t-4 border-black px-4 py-4 space-y-3">
+          {!profileLoading && (
+            <div className="flex items-center justify-center">
+              <span className={`inline-flex items-center rounded-full px-3 py-1 text-[12px] font-bold uppercase [font-family:var(--font-oswald)] ${
+                isOwner
+                  ? "bg-[#E374C7] text-white"
+                  : "bg-[#0023D1] text-white"
+              }`}>
+                {isOwner ? "OWNER" : "STAFF"}
+              </span>
+            </div>
+          )}
           <button
             onClick={handleSignOut}
             className="flex w-full items-center gap-3 rounded-[20px] px-4 py-3 text-[16px] font-bold uppercase text-[#00592B] transition-all [font-family:var(--font-oswald)] hover:bg-[#E374C7] hover:text-black"

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useProfile } from "@/lib/hooks/use-profile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,13 +17,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, Pencil, Smartphone } from "lucide-react";
+import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
 
 interface Size {
   id: string;
   label: string;
   numeric_value: number | null;
+}
+
+interface TeamMember {
+  id: string;
+  display_name: string | null;
+  role: "owner" | "staff";
+  email?: string;
 }
 
 export default function SettingsPage() {
@@ -36,13 +44,10 @@ export default function SettingsPage() {
   const [priceCount, setPriceCount] = useState(0);
   const [upiId, setUpiId] = useState("");
   const [upiLoading, setUpiLoading] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
   const supabase = createClient();
-
-  useEffect(() => {
-    loadSizes();
-    loadUpi();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { isOwner, loading: profileLoading } = useProfile();
 
   async function loadSizes() {
     const { data } = await supabase
@@ -59,6 +64,39 @@ export default function SettingsPage() {
       .eq("key", "upi_id")
       .single();
     if (data) setUpiId(data.value);
+  }
+
+  async function loadTeam() {
+    setTeamLoading(true);
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, display_name, role")
+      .order("role");
+
+    if (profiles) {
+      // Get emails from auth (only possible via admin — show display_name instead)
+      setTeamMembers(profiles.map((p) => ({
+        id: p.id,
+        display_name: p.display_name,
+        role: p.role,
+      })));
+    }
+    setTeamLoading(false);
+  }
+
+  async function toggleRole(member: TeamMember) {
+    const newRole = member.role === "owner" ? "staff" : "owner";
+    const { error } = await supabase
+      .from("profiles")
+      .update({ role: newRole })
+      .eq("id", member.id);
+
+    if (error) {
+      toast.error("Failed to update role: " + error.message);
+    } else {
+      toast.success(`${member.display_name || "User"} is now ${newRole}`);
+      await loadTeam();
+    }
   }
 
   async function saveUpi() {
@@ -163,6 +201,15 @@ export default function SettingsPage() {
     setNewNumeric(size.numeric_value !== null ? String(size.numeric_value) : "");
   }
 
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    loadSizes();
+    loadUpi();
+    if (isOwner) loadTeam();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOwner]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   return (
     <div className="space-y-6">
       <div>
@@ -170,10 +217,26 @@ export default function SettingsPage() {
           SETTINGS
         </h1>
         <p className="mt-1 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-          MANAGE YOUR SIZES
+          {isOwner ? "MANAGE YOUR SHOP" : "OWNER ACCESS REQUIRED FOR FULL SETTINGS"}
         </p>
       </div>
 
+      {!profileLoading && !isOwner && (
+        <Card className="max-w-lg">
+          <CardContent className="p-6 text-center">
+            <Shield className="mx-auto h-8 w-8 text-[#E374C7] mb-3" />
+            <p className="text-[16px] font-bold text-white [font-family:var(--font-oswald)] uppercase">
+              OWNER ACCESS REQUIRED
+            </p>
+            <p className="text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase mt-2">
+              Only the shop owner can manage settings, sizes, and payment configuration.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isOwner && (
+        <>
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
@@ -285,6 +348,63 @@ export default function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+        </>
+      )}
+
+      {isOwner && (
+        <Card className="max-w-lg">
+          <CardHeader>
+            <CardTitle>
+              <Users className="h-5 w-5 inline mr-2" />
+              TEAM
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+              MANAGE WHO CAN ACCESS THE SYSTEM
+            </p>
+            {teamLoading ? (
+              <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase">LOADING...</p>
+            ) : (
+              <div className="space-y-2">
+                {teamMembers.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between rounded-[12px] border-2 border-black px-3 py-2.5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+                        {member.display_name || "UNKNOWN USER"}
+                      </span>
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase [font-family:var(--font-oswald)] ${
+                        member.role === "owner"
+                          ? "bg-[#E374C7] text-white"
+                          : "bg-[#0023D1] text-white"
+                      }`}>
+                        {member.role}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleRole(member)}
+                    >
+                      {member.role === "owner" ? (
+                        <><ShieldOff className="mr-1 h-3 w-3" /> DEMOTE</>
+                      ) : (
+                        <><Shield className="mr-1 h-3 w-3" /> PROMOTE</>
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
+              Owners can void bills, access settings, and see financial summaries. Staff can create and edit bills.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setPriceCount(0); } }}>
         <DialogContent>
