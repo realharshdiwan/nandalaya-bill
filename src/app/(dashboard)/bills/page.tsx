@@ -133,6 +133,11 @@ export default async function BillsPage({
                         <Badge>
                           {bill.payment_method}
                         </Badge>
+                        {!isVoided && (
+                          <Badge className={bill.is_paid ? "bg-[#00592B]" : "bg-[#E374C7]"}>
+                            {bill.is_paid ? "PAID" : "UNPAID"}
+                          </Badge>
+                        )}
                         {isVoided && (
                           <Badge className="bg-[#C42424]">VOIDED</Badge>
                         )}

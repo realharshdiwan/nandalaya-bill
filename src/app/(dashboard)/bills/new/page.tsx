@@ -304,6 +304,8 @@ export default function NewBillPage() {
           return details.length > 0 ? details : null;
         })() : null,
         notes: notes || null,
+        is_paid: paymentMethod !== "credit" && !(paymentMethod === "split" && parseFloat(splitCredit) > 0),
+        paid_at: paymentMethod !== "credit" && !(paymentMethod === "split" && parseFloat(splitCredit) > 0) ? new Date().toISOString() : null,
       })
       .select("id")
       .single();

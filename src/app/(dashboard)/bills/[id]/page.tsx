@@ -10,6 +10,8 @@ import { ArrowLeft } from "lucide-react";
 import QRCode from "qrcode";
 import VoidBillButton from "./void-bill-button";
 import PrintButton from "./print-button";
+import MarkPaidButton from "./mark-paid-button";
+import EditBillButton from "./edit-bill-button";
 
 export const dynamic = "force-dynamic";
 
@@ -100,12 +102,31 @@ export default async function BillDetailPage({
               {bill.bill_number}
             </h1>
             <Badge>{bill.payment_method === "split" ? "SPLIT" : bill.payment_method}</Badge>
+            <Badge className={bill.is_paid ? "bg-[#00592B]" : "bg-[#E374C7]"}>
+              {bill.is_paid ? "PAID" : "UNPAID"}
+            </Badge>
             {isVoided && (
               <Badge className="bg-[#C42424]">VOIDED</Badge>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {!isVoided && (
+            <EditBillButton
+              bill={{
+                id: bill.id,
+                customer_name: bill.customer_name,
+                customer_phone: bill.customer_phone,
+                school_id: bill.school_id,
+                subtotal: bill.subtotal,
+                discount: bill.discount,
+                total: bill.total,
+                notes: bill.notes,
+              }}
+              items={items || []}
+            />
+          )}
+          {!isVoided && <MarkPaidButton billId={bill.id} isPaid={bill.is_paid} />}
           <PrintButton />
           {!isVoided && (
             <VoidBillButton billId={bill.id} billNumber={bill.bill_number} />

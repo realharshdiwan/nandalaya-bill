@@ -31,12 +31,15 @@ interface Product {
   name: string;
   category: string;
   sort_order: number;
+  current_stock: number;
+  low_stock_threshold: number;
 }
 
 const categoryLabels: Record<string, string> = {
   uniform: "UNIFORM",
-  accessory: "ACCESSORY",
-  garment: "GARMENT",
+  shoes: "SHOES",
+  accessories: "ACCESSORIES",
+  other: "OTHER",
 };
 
 export default function ProductsPage() {
@@ -49,10 +52,12 @@ export default function ProductsPage() {
 
   const [formName, setFormName] = useState("");
   const [formCategory, setFormCategory] = useState("uniform");
+  const [formStock, setFormStock] = useState("0");
+  const [formThreshold, setFormThreshold] = useState("0");
   const [loading, setLoading] = useState(false);
 
   async function loadProducts() {
-    const { data } = await supabase.from("products").select("id, name, category, sort_order").order("sort_order").order("name");
+    const { data } = await supabase.from("products").select("id, name, category, sort_order, current_stock, low_stock_threshold").order("sort_order").order("name");
     setProducts(data || []);
   }
 
@@ -66,6 +71,8 @@ export default function ProductsPage() {
   function openAddDialog() {
     setFormName("");
     setFormCategory("uniform");
+    setFormStock("0");
+    setFormThreshold("0");
     setAddOpen(true);
   }
 
@@ -73,13 +80,21 @@ export default function ProductsPage() {
     setEditProduct(product);
     setFormName(product.name);
     setFormCategory(product.category);
+    setFormStock(String(product.current_stock));
+    setFormThreshold(String(product.low_stock_threshold));
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     const maxSort = products.reduce((max, p) => Math.max(max, p.sort_order), 0);
-    const { error } = await supabase.from("products").insert({ name: formName, category: formCategory, sort_order: maxSort + 1 });
+    const { error } = await supabase.from("products").insert({
+      name: formName,
+      category: formCategory,
+      sort_order: maxSort + 1,
+      current_stock: parseInt(formStock) || 0,
+      low_stock_threshold: parseInt(formThreshold) || 0,
+    });
     if (error) {
       toast.error("Failed to add product: " + error.message);
     } else {
@@ -96,7 +111,12 @@ export default function ProductsPage() {
     setLoading(true);
     const { error } = await supabase
       .from("products")
-      .update({ name: formName, category: formCategory })
+      .update({
+        name: formName,
+        category: formCategory,
+        current_stock: parseInt(formStock) || 0,
+        low_stock_threshold: parseInt(formThreshold) || 0,
+      })
       .eq("id", editProduct.id);
     if (error) {
       toast.error("Failed to update product: " + error.message);
@@ -203,9 +223,17 @@ export default function ProductsPage() {
                   <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase text-[16px]">
                     {product.name}
                   </p>
-                  <Badge>
-                    {categoryLabels[product.category] || product.category}
-                  </Badge>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge>
+                      {categoryLabels[product.category] || product.category}
+                    </Badge>
+                    {product.low_stock_threshold > 0 && (
+                      <Badge className={product.current_stock <= product.low_stock_threshold ? "bg-[#C42424]" : "bg-[#00592B]"}>
+                        STOCK: {product.current_stock}
+                        {product.current_stock <= product.low_stock_threshold ? " ⚠ LOW" : ""}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -256,14 +284,39 @@ export default function ProductsPage() {
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 CATEGORY
               </Label>
-              <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")} items={[{ value: "uniform", label: "UNIFORM" }, { value: "accessory", label: "ACCESSORY" }, { value: "garment", label: "GARMENT" }]}>
+              <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")} items={[{ value: "uniform", label: "UNIFORM" }, { value: "shoes", label: "SHOES" }, { value: "accessories", label: "ACCESSORIES" }, { value: "other", label: "OTHER" }]}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="uniform">UNIFORM</SelectItem>
-                  <SelectItem value="accessory">ACCESSORY</SelectItem>
-                  <SelectItem value="garment">GARMENT</SelectItem>
+                  <SelectItem value="shoes">SHOES</SelectItem>
+                  <SelectItem value="accessories">ACCESSORIES</SelectItem>
+                  <SelectItem value="other">OTHER</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                CURRENT STOCK
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={formStock}
+                onChange={(e) => setFormStock(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                LOW STOCK ALERT THRESHOLD
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="0 = no alert"
+                value={formThreshold}
+                onChange={(e) => setFormThreshold(e.target.value)}
+              />
             </div>
             <div className="flex gap-3 justify-end">
               <Button type="submit" disabled={loading || !formName}>
@@ -296,14 +349,39 @@ export default function ProductsPage() {
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 CATEGORY
               </Label>
-              <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")} items={[{ value: "uniform", label: "UNIFORM" }, { value: "accessory", label: "ACCESSORY" }, { value: "garment", label: "GARMENT" }]}>
+              <Select value={formCategory} onValueChange={(v) => setFormCategory(v ?? "uniform")} items={[{ value: "uniform", label: "UNIFORM" }, { value: "shoes", label: "SHOES" }, { value: "accessories", label: "ACCESSORIES" }, { value: "other", label: "OTHER" }]}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="uniform">UNIFORM</SelectItem>
-                  <SelectItem value="accessory">ACCESSORY</SelectItem>
-                  <SelectItem value="garment">GARMENT</SelectItem>
+                  <SelectItem value="shoes">SHOES</SelectItem>
+                  <SelectItem value="accessories">ACCESSORIES</SelectItem>
+                  <SelectItem value="other">OTHER</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                CURRENT STOCK
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={formStock}
+                onChange={(e) => setFormStock(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                LOW STOCK ALERT THRESHOLD
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="0 = no alert"
+                value={formThreshold}
+                onChange={(e) => setFormThreshold(e.target.value)}
+              />
             </div>
             <div className="flex gap-3 justify-end">
               <Button type="submit" disabled={loading || !formName}>

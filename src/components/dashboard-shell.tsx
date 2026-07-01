@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Menu, ShoppingCart } from "lucide-react";
-import { getCartCount, getCartTotal, clearCart } from "@/lib/cart";
+import { getCartCount, getCartTotal } from "@/lib/cart";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -27,11 +27,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   function handleCartClick() {
     router.push("/bills/new");
-  }
-
-  function handleClearCart(e: React.MouseEvent) {
-    e.stopPropagation();
-    clearCart();
   }
 
   return (
@@ -62,33 +57,20 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      {/* Floating cart button */}
+      {/* Floating cart pill */}
       {cartCount > 0 && (
         <button
           onClick={handleCartClick}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-[16px] border-2 border-black bg-[#00592B] px-5 py-3 shadow-[4px_4px_0_0_#000] hover:shadow-[2px_2px_0_0_#000] hover:translate-x-[2px] hover:translate-y-[2px] transition-all cursor-pointer lg:bottom-8 lg:right-8"
+          className="fixed bottom-6 right-6 z-[60] flex items-center gap-2.5 rounded-full border-2 border-black bg-[#00592B] px-4 py-2.5 shadow-[3px_3px_0_0_#000] hover:shadow-[1px_1px_0_0_#000] hover:translate-x-[2px] hover:translate-y-[2px] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer lg:bottom-8 lg:right-8"
         >
-          <div className="relative">
-            <ShoppingCart className="h-6 w-6 text-white" />
-            <span className="absolute -top-2 -right-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#E374C7] px-1 text-[11px] font-bold text-white [font-family:var(--font-oswald)]">
-              {cartCount}
-            </span>
-          </div>
-          <div className="flex flex-col items-start">
-            <span className="text-[14px] text-white [font-family:var(--font-oswald)] uppercase font-bold leading-tight">
-              {cartCount} ITEM{cartCount !== 1 ? "S" : ""}
-            </span>
-            <span className="text-[13px] text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold leading-tight">
-              ₹{cartTotal}
-            </span>
-          </div>
-          <button
-            onClick={handleClearCart}
-            className="ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white hover:bg-red-500 transition-colors cursor-pointer"
-            title="Clear cart"
-          >
-            ×
-          </button>
+          <ShoppingCart className="h-5 w-5 text-white" />
+          <span className="text-[15px] text-white [font-family:var(--font-oswald)] uppercase font-bold">
+            {cartCount}
+          </span>
+          <span className="h-4 w-px bg-white/40" />
+          <span className="text-[15px] text-[#E374C7] [font-family:var(--font-oswald)] font-bold">
+            ₹{cartTotal}
+          </span>
         </button>
       )}
     </div>
