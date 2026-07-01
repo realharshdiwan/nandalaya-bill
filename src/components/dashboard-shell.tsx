@@ -1,11 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
-import { Menu } from "lucide-react";
+import { Menu, ShoppingCart } from "lucide-react";
+import { getCartCount, getCartTotal, clearCart } from "@/lib/cart";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const router = useRouter();
+  const [cartCount, setCartCount] = useState(0);
+  const [cartTotal, setCartTotal] = useState(0);
+
+  const refreshCart = useCallback(() => {
+    setCartCount(getCartCount());
+    setCartTotal(getCartTotal());
+  }, []);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    refreshCart();
+    window.addEventListener("cart-updated", refreshCart);
+    return () => window.removeEventListener("cart-updated", refreshCart);
+  }, [refreshCart]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  function handleCartClick() {
+    router.push("/bills/new");
+  }
+
+  function handleClearCart(e: React.MouseEvent) {
+    e.stopPropagation();
+    clearCart();
+  }
 
   return (
     <div className="min-h-screen bg-[#00592B]">
@@ -34,6 +61,36 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+
+      {/* Floating cart button */}
+      {cartCount > 0 && (
+        <button
+          onClick={handleCartClick}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-[16px] border-2 border-black bg-[#00592B] px-5 py-3 shadow-[4px_4px_0_0_#000] hover:shadow-[2px_2px_0_0_#000] hover:translate-x-[2px] hover:translate-y-[2px] transition-all cursor-pointer lg:bottom-8 lg:right-8"
+        >
+          <div className="relative">
+            <ShoppingCart className="h-6 w-6 text-white" />
+            <span className="absolute -top-2 -right-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#E374C7] px-1 text-[11px] font-bold text-white [font-family:var(--font-oswald)]">
+              {cartCount}
+            </span>
+          </div>
+          <div className="flex flex-col items-start">
+            <span className="text-[14px] text-white [font-family:var(--font-oswald)] uppercase font-bold leading-tight">
+              {cartCount} ITEM{cartCount !== 1 ? "S" : ""}
+            </span>
+            <span className="text-[13px] text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold leading-tight">
+              ₹{cartTotal}
+            </span>
+          </div>
+          <button
+            onClick={handleClearCart}
+            className="ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-white hover:bg-red-500 transition-colors cursor-pointer"
+            title="Clear cart"
+          >
+            ×
+          </button>
+        </button>
+      )}
     </div>
   );
 }

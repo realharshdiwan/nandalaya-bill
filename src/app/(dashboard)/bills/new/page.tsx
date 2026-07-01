@@ -22,6 +22,7 @@ import {
 import { ArrowLeft, Plus, Trash2, Receipt } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { getCart, clearCart } from "@/lib/cart";
 
 interface School {
   id: string;
@@ -96,6 +97,44 @@ export default function NewBillPage() {
       setSchools(schoolsRes.data || []);
       setProducts(productsRes.data || []);
       setSizes(sizesRes.data || []);
+
+      // Check for pre-loaded cart from school detail page
+      const cartItems = getCart();
+      const params = new URLSearchParams(window.location.search);
+      const schoolParam = params.get("school");
+
+      if (cartItems.length > 0 && schoolParam) {
+        // Auto-select school
+        setSelectedSchool(schoolParam);
+
+        // Convert CartItems → BillItems
+        const allProducts = productsRes.data || [];
+        const allSizes = sizesRes.data || [];
+
+        const newBillItems: BillItem[] = cartItems.map((ci) => {
+          const product = allProducts.find((p) => p.id === ci.product_id);
+          const size = ci.size_id ? allSizes.find((s) => s.id === ci.size_id) : null;
+          const subtotal = ci.qty * ci.price;
+          return {
+            key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            product_id: ci.product_id,
+            product_name: ci.product_name || product?.name || "",
+            size_id: ci.size_id,
+            size_label: ci.size_label || size?.label || "",
+            qty: ci.qty,
+            price: ci.price,
+            subtotal,
+            discount_type: "none" as const,
+            discount_value: 0,
+            discount_amount: 0,
+            effective_subtotal: subtotal,
+          };
+        });
+
+        setItems(newBillItems);
+        clearCart();
+        toast.success(`Loaded ${cartItems.length} item${cartItems.length !== 1 ? "s" : ""} from cart`);
+      }
     }
     load();
   }, [supabase]);

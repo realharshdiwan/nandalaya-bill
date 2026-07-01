@@ -1,9 +1,11 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { getCartCount } from "@/lib/cart";
 import {
   Home,
   LayoutDashboard,
@@ -39,6 +41,19 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  const [cartCount, setCartCount] = useState(0);
+
+  const refreshCartCount = useCallback(() => {
+    setCartCount(getCartCount());
+  }, []);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    refreshCartCount();
+    window.addEventListener("cart-updated", refreshCartCount);
+    return () => window.removeEventListener("cart-updated", refreshCartCount);
+  }, [refreshCartCount]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -95,6 +110,11 @@ export function Sidebar({
               >
                 <item.icon className="h-6 w-6" />
                 {item.label}
+                {item.href === "/bills" && cartCount > 0 && (
+                  <span className="ml-auto flex h-6 min-w-[24px] items-center justify-center rounded-full bg-[#E374C7] px-1.5 text-[12px] font-bold text-white [font-family:var(--font-oswald)]">
+                    {cartCount}
+                  </span>
+                )}
               </Link>
             );
           })}
