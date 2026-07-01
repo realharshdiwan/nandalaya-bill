@@ -23,7 +23,7 @@ export default async function BillsPage({
 
   let query = supabase
     .from("bills")
-    .select("id, bill_number, customer_name, customer_phone, total, payment_method, created_at, status, schools(name, short_code)")
+    .select("id, bill_number, customer_name, customer_phone, total, payment_method, is_paid, created_at, status, schools(name, short_code)")
     .order("created_at", { ascending: false })
     .limit(100);
 

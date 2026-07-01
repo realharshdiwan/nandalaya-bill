@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, CircleDollarSign } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -15,61 +15,57 @@ interface Props {
 export default function MarkPaidButton({ billId, isPaid }: Props) {
   const router = useRouter();
   const supabase = createClient();
+  const [optimisticPaid, setOptimisticPaid] = useState(isPaid);
   const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
-  async function handleMarkPaid() {
+  async function handleTogglePaid() {
     setLoading(true);
+    const newPaid = !optimisticPaid;
+    setOptimisticPaid(newPaid);
+
     const { error } = await supabase
       .from("bills")
-      .update({ is_paid: true, paid_at: new Date().toISOString() })
+      .update({
+        is_paid: newPaid,
+        paid_at: newPaid ? new Date().toISOString() : null,
+      })
       .eq("id", billId);
 
     if (error) {
-      toast.error("Failed to mark as paid: " + error.message);
+      setOptimisticPaid(optimisticPaid);
+      toast.error("Failed: " + error.message);
     } else {
-      toast.success("Payment received!");
-      router.refresh();
+      toast.success(newPaid ? "Payment received!" : "Marked as unpaid");
+      startTransition(() => {
+        router.refresh();
+      });
     }
     setLoading(false);
   }
 
-  async function handleMarkUnpaid() {
-    setLoading(true);
-    const { error } = await supabase
-      .from("bills")
-      .update({ is_paid: false, paid_at: null })
-      .eq("id", billId);
-
-    if (error) {
-      toast.error("Failed to update: " + error.message);
-    } else {
-      toast.success("Marked as unpaid");
-      router.refresh();
-    }
-    setLoading(false);
-  }
-
-  if (isPaid) {
+  if (optimisticPaid) {
     return (
       <Button
-        variant="tertiary"
-        onClick={handleMarkUnpaid}
-        disabled={loading}
-        className="text-[12px]"
+        variant="ghost"
+        size="sm"
+        onClick={handleTogglePaid}
+        disabled={loading || isPending}
       >
         <CheckCircle className="mr-1 h-4 w-4 text-[#00592B]" />
-        <span>PAID</span>
+        <span className="text-[#00592B]">PAID</span>
       </Button>
     );
   }
 
   return (
     <Button
-      onClick={handleMarkPaid}
-      disabled={loading}
-      className="bg-[#E374C7] hover:bg-[#d060b0] text-[12px]"
+      size="sm"
+      onClick={handleTogglePaid}
+      disabled={loading || isPending}
+      className="bg-[#E374C7] hover:bg-[#d060b0]"
     >
-      <CheckCircle className="mr-1 h-4 w-4" />
+      <CircleDollarSign className="mr-1 h-4 w-4" />
       <span>{loading ? "MARKING..." : "MARK PAID"}</span>
     </Button>
   );

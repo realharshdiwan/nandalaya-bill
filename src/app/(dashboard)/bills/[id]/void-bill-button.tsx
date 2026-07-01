@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ export default function VoidBillButton({ billId, billNumber }: Props) {
   const [open, setOpen] = useState(false);
   const [confirmNumber, setConfirmNumber] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   async function handleVoid() {
     setLoading(true);
@@ -43,7 +44,9 @@ export default function VoidBillButton({ billId, billNumber }: Props) {
     } else {
       toast.success(`Bill ${billNumber} voided`);
       setOpen(false);
-      router.refresh();
+      startTransition(() => {
+        router.refresh();
+      });
     }
     setLoading(false);
   }
@@ -89,7 +92,7 @@ export default function VoidBillButton({ billId, billNumber }: Props) {
               </Button>
               <Button
                 onClick={handleVoid}
-                disabled={loading || confirmNumber !== billNumber}
+                disabled={loading || isPending || confirmNumber !== billNumber}
                 className="bg-[#C42424] hover:bg-[#A01C1C]"
               >
                 <span>{loading ? "VOIDING..." : "VOID BILL"}</span>
