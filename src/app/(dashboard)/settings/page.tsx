@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff } from "lucide-react";
+import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 
 interface Size {
@@ -406,6 +406,10 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      {isOwner && (
+        <ThermalPrinterCard />
+      )}
+
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setPriceCount(0); } }}>
         <DialogContent>
           <DialogHeader>
@@ -435,5 +439,70 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function ThermalPrinterCard() {
+  const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleConnect() {
+    if (connected) {
+      const { disconnectPrinter } = await import("@/lib/thermal-printer");
+      disconnectPrinter();
+      setConnected(false);
+      setStatus("Disconnected");
+      toast.info("Printer disconnected");
+      return;
+    }
+
+    setLoading(true);
+    const { connectToPrinter } = await import("@/lib/thermal-printer");
+    const ok = await connectToPrinter((msg) => setStatus(msg));
+    setConnected(ok);
+    if (ok) {
+      toast.success("Printer connected!");
+    }
+    setLoading(false);
+  }
+
+  return (
+    <Card className="max-w-lg">
+      <CardHeader>
+        <CardTitle>
+          <Printer className="h-5 w-5 inline mr-2" />
+          THERMAL PRINTER
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+          CONNECT A BLUETOOTH THERMAL PRINTER
+        </p>
+        <div className="flex gap-3 items-center">
+          <Button onClick={handleConnect} disabled={loading}>
+            {connected ? (
+              <><WifiOff className="mr-1 h-4 w-4" /><span>DISCONNECT</span></>
+            ) : (
+              <><Wifi className="mr-1 h-4 w-4" /><span>{loading ? "SEARCHING..." : "CONNECT"}</span></>
+            )}
+          </Button>
+          {connected && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#00592B] px-3 py-1 text-[12px] font-bold text-white [font-family:var(--font-oswald)] uppercase">
+              <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+              CONNECTED
+            </span>
+          )}
+        </div>
+        {status && (
+          <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
+            {status}
+          </p>
+        )}
+        <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
+          Works with ESC/POS compatible Bluetooth thermal printers (80mm or 58mm). Connect once here, then use the THERMAL button on any bill to print receipts.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

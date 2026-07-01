@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Wifi, WifiOff, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import {
-  connectToPrinter,
-  disconnectPrinter,
+  isPrinterConnected,
   printReceipt,
   generateReceipt,
 } from "@/lib/thermal-printer";
@@ -39,67 +38,31 @@ export default function ThermalPrintButton({
   bill: BillData;
   items: BillItem[];
 }) {
-  const [connected, setConnected] = useState(false);
-  const [status, setStatus] = useState("");
   const [printing, setPrinting] = useState(false);
 
-  async function handleConnect() {
-    if (connected) {
-      disconnectPrinter();
-      setConnected(false);
-      setStatus("Disconnected");
-      toast.info("Printer disconnected");
-      return;
-    }
-
-    const ok = await connectToPrinter((msg) => setStatus(msg));
-    setConnected(ok);
-    if (ok) toast.success("Printer connected!");
-  }
-
   async function handlePrint() {
-    if (!connected) {
-      toast.error("Connect to printer first");
+    if (!isPrinterConnected()) {
+      toast.error("No printer connected. Go to Settings to connect.");
       return;
     }
 
     setPrinting(true);
     const receipt = generateReceipt(bill, items);
-    const ok = await printReceipt(receipt, (msg) => setStatus(msg));
+    const ok = await printReceipt(receipt, (msg) => {
+      if (msg) toast.info(msg);
+    });
     if (ok) toast.success("Receipt printed!");
     setPrinting(false);
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleConnect}
-      >
-        {connected ? (
-          <Wifi className="mr-1 h-4 w-4 text-[#00592B]" />
-        ) : (
-          <WifiOff className="mr-1 h-4 w-4 text-[#C42424]" />
-        )}
-        <span>{connected ? "PRINTER ON" : "CONNECT"}</span>
-      </Button>
-      {connected && (
-        <Button
-          size="sm"
-          onClick={handlePrint}
-          disabled={printing}
-          className="bg-[#00592B]"
-        >
-          <Printer className="mr-1 h-4 w-4" />
-          <span>{printing ? "PRINTING..." : "THERMAL"}</span>
-        </Button>
-      )}
-      {status && (
-        <span className="text-[11px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
-          {status}
-        </span>
-      )}
-    </div>
+    <Button
+      size="sm"
+      onClick={handlePrint}
+      disabled={printing}
+    >
+      <Printer className="mr-1 h-4 w-4" />
+      <span>{printing ? "PRINTING..." : "THERMAL"}</span>
+    </Button>
   );
 }
