@@ -34,6 +34,7 @@ interface Product {
   id: string;
   name: string;
   sort_order: number;
+  current_stock: number;
 }
 
 interface Size {
@@ -94,7 +95,7 @@ export default function NewBillPage() {
     async function load() {
       const [schoolsRes, productsRes, sizesRes] = await Promise.all([
         supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name, sort_order").order("sort_order").order("name"),
+        supabase.from("products").select("id, name, sort_order, current_stock").order("sort_order").order("name"),
         supabase.from("sizes").select("id, label").order("numeric_value"),
       ]);
       setSchools(schoolsRes.data || []);
@@ -207,6 +208,11 @@ export default function NewBillPage() {
     if (qty <= 0 || price <= 0) {
       toast.error("Quantity and price must be positive");
       return;
+    }
+
+    // Stock validation
+    if (product && product.current_stock > 0 && qty > product.current_stock) {
+      toast.warning(`Only ${product.current_stock} in stock for ${product.name}`);
     }
 
     const subtotal = qty * price;
@@ -337,6 +343,16 @@ export default function NewBillPage() {
       toast.error("Failed to save items: " + itemsError.message);
       setLoading(false);
       return;
+    }
+
+    // Decrement stock for each item
+    for (const item of items) {
+      if (item.qty > 0) {
+        await supabase.rpc("decrement_stock", {
+          p_product_id: item.product_id,
+          p_qty: item.qty,
+        });
+      }
     }
 
     toast.success(`Bill ${billNumber} created`);

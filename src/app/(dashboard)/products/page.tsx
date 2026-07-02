@@ -33,6 +33,7 @@ interface Product {
   sort_order: number;
   current_stock: number;
   low_stock_threshold: number;
+  hsn_code: string | null;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -54,10 +55,11 @@ export default function ProductsPage() {
   const [formCategory, setFormCategory] = useState("uniform");
   const [formStock, setFormStock] = useState("0");
   const [formThreshold, setFormThreshold] = useState("0");
+  const [formHsn, setFormHsn] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function loadProducts() {
-    const { data } = await supabase.from("products").select("id, name, category, sort_order, current_stock, low_stock_threshold").order("sort_order").order("name");
+    const { data } = await supabase.from("products").select("id, name, category, sort_order, current_stock, low_stock_threshold, hsn_code").order("sort_order").order("name");
     setProducts(data || []);
   }
 
@@ -73,6 +75,7 @@ export default function ProductsPage() {
     setFormCategory("uniform");
     setFormStock("0");
     setFormThreshold("0");
+    setFormHsn("");
     setAddOpen(true);
   }
 
@@ -82,6 +85,7 @@ export default function ProductsPage() {
     setFormCategory(product.category);
     setFormStock(String(product.current_stock));
     setFormThreshold(String(product.low_stock_threshold));
+    setFormHsn(product.hsn_code || "");
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -94,6 +98,7 @@ export default function ProductsPage() {
       sort_order: maxSort + 1,
       current_stock: parseInt(formStock) || 0,
       low_stock_threshold: parseInt(formThreshold) || 0,
+      hsn_code: formHsn || null,
     });
     if (error) {
       toast.error("Failed to add product: " + error.message);
@@ -116,6 +121,7 @@ export default function ProductsPage() {
         category: formCategory,
         current_stock: parseInt(formStock) || 0,
         low_stock_threshold: parseInt(formThreshold) || 0,
+        hsn_code: formHsn || null,
       })
       .eq("id", editProduct.id);
     if (error) {
@@ -296,6 +302,16 @@ export default function ProductsPage() {
             </div>
             <div className="space-y-2">
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                HSN CODE (OPTIONAL)
+              </Label>
+              <Input
+                placeholder="E.G. 6205 (FOR GST)"
+                value={formHsn}
+                onChange={(e) => setFormHsn(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 CURRENT STOCK
               </Label>
               <Input
@@ -358,6 +374,16 @@ export default function ProductsPage() {
                   <SelectItem value="other">OTHER</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                HSN CODE (OPTIONAL)
+              </Label>
+              <Input
+                placeholder="E.G. 6205 (FOR GST)"
+                value={formHsn}
+                onChange={(e) => setFormHsn(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">

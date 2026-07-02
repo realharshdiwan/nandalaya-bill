@@ -240,23 +240,53 @@ export default function EditBillPanel({
       .filter((i) => i.existing_id)
       .map((i) => i.existing_id!);
 
-    // 1. Delete removed items
-    if (keptExistingIds.length < existingItems.length) {
-      const idsToDelete = existingItems
-        .filter((ei) => !keptExistingIds.includes(ei.id))
-        .map((ei) => ei.id);
+    // 1. Delete removed items and restore their stock
+    const removedItems = existingItems.filter((ei) => !keptExistingIds.includes(ei.id));
+    if (removedItems.length > 0) {
+      const idsToDelete = removedItems.map((ei) => ei.id);
 
-      if (idsToDelete.length > 0) {
-        const { error } = await supabase.from("bill_items").delete().in("id", idsToDelete);
-        if (error) {
-          toast.error("Failed to remove items: " + error.message);
-          setLoading(false);
-          return;
+      const { error } = await supabase.from("bill_items").delete().in("id", idsToDelete);
+      if (error) {
+        toast.error("Failed to remove items: " + error.message);
+        setLoading(false);
+        return;
+      }
+
+      // Restore stock for removed items
+      for (const item of removedItems) {
+        if (item.qty > 0) {
+          await supabase.rpc("increment_stock", {
+            p_product_id: item.product_id,
+            p_qty: item.qty,
+          });
         }
       }
     }
 
-    // 2. Insert new items
+    // 2. Adjust stock for changed quantities on existing items
+    for (const item of items) {
+      if (item.existing_id) {
+        const original = existingItems.find((ei) => ei.id === item.existing_id);
+        if (original) {
+          const qtyDiff = item.qty - original.qty;
+          if (qtyDiff > 0) {
+            // Quantity increased — decrement extra stock
+            await supabase.rpc("decrement_stock", {
+              p_product_id: item.product_id,
+              p_qty: qtyDiff,
+            });
+          } else if (qtyDiff < 0) {
+            // Quantity decreased — restore excess stock
+            await supabase.rpc("increment_stock", {
+              p_product_id: item.product_id,
+              p_qty: Math.abs(qtyDiff),
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Insert new items and decrement their stock
     const newItems = items.filter((i) => !i.existing_id);
     if (newItems.length > 0) {
       const billItems = newItems.map((item) => ({
@@ -279,9 +309,19 @@ export default function EditBillPanel({
         setLoading(false);
         return;
       }
+
+      // Decrement stock for new items
+      for (const item of newItems) {
+        if (item.qty > 0) {
+          await supabase.rpc("decrement_stock", {
+            p_product_id: item.product_id,
+            p_qty: item.qty,
+          });
+        }
+      }
     }
 
-    // 3. Update bill totals and customer info
+    // 4. Update bill totals and customer info
     const { error: updateError } = await supabase
       .from("bills")
       .update({

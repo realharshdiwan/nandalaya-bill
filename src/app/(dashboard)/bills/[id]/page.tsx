@@ -34,14 +34,20 @@ export default async function BillDetailPage({
 
   const { data: items } = await supabase
     .from("bill_items")
-    .select("*")
+    .select("*, products(hsn_code)")
     .eq("bill_id", id)
     .order("created_at");
+
+  // Load shop config
+  const { data: shopRows } = await supabase.from("shop_config").select("key, value");
+  const shopMap = Object.fromEntries((shopRows || []).map((r) => [r.key, r.value]));
 
   const school = Array.isArray(bill.schools) ? bill.schools[0] : bill.schools;
   const isVoided = bill.status === "voided";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hasItemDiscounts = items?.some((item: any) => item.discount_amount > 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hasHsn = items?.some((item: any) => item.products?.hsn_code);
 
   // Determine if UPI is part of payment
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,7 +78,7 @@ export default async function BillDetailPage({
     if (upiId) {
       const params = new URLSearchParams({
         pa: upiId,
-        pn: "NANDALAYA",
+        pn: shopMap.legal_name || "NANDALAYA",
         am: upiAmount.toFixed(2),
         tn: bill.bill_number,
         cu: "INR",
@@ -210,12 +216,30 @@ export default async function BillDetailPage({
         <CardContent className="p-6 space-y-6">
           {/* Shop header */}
           <div className="text-center border-b-2 border-black pb-4">
+            <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+              BILL OF SUPPLY
+            </p>
             <h2 className="text-[24px] font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
-              NANDALAYA
+              {shopMap.legal_name || "NANDALAYA"}
             </h2>
             <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
-              SCHOOL UNIFORMS & GARMENTS
+              {shopMap.shop_tagline || "SCHOOL UNIFORMS & GARMENTS"}
             </p>
+            {shopMap.shop_address && (
+              <p className="text-[12px] text-[#003F1E] [font-family:var(--font-oswald)] uppercase font-bold">
+                {shopMap.shop_address}
+              </p>
+            )}
+            {shopMap.gstin && (
+              <p className="text-[12px] text-[#003F1E] [font-family:var(--font-oswald)] uppercase font-bold">
+                GSTIN: {shopMap.gstin} (Composite Tax Payee)
+              </p>
+            )}
+            {shopMap.shop_phone && (
+              <p className="text-[12px] text-[#003F1E] [font-family:var(--font-oswald)] uppercase font-bold">
+                Mob. {shopMap.shop_phone}
+              </p>
+            )}
           </div>
 
           {/* Bill info */}
@@ -259,13 +283,14 @@ export default async function BillDetailPage({
             <table className="w-full text-[14px]">
               <thead>
                 <tr className="border-b-2 border-black text-left">
-                  <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">ITEM</th>
+                  <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">DESCRIPTION</th>
+                  {hasHsn && <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold text-center">HSN</th>}
                   <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold text-center">QTY</th>
-                  <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold text-right">PRICE</th>
+                  <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold text-right">RATE</th>
                   {hasItemDiscounts && (
                     <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold text-right">DISC</th>
                   )}
-                  <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold text-right">TOTAL</th>
+                  <th className="pb-2 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold text-right">AMOUNT</th>
                 </tr>
               </thead>
               <tbody>
@@ -276,6 +301,11 @@ export default async function BillDetailPage({
                       <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">{item.product_name}</span>
                       {item.size_label && <span className="ml-1 text-[#4D8A6B] text-[12px]">({item.size_label})</span>}
                     </td>
+                    {hasHsn && (
+                      <td className="py-2.5 text-center text-[#00592B] [font-family:var(--font-oswald)]">
+                        {item.products?.hsn_code || ""}
+                      </td>
+                    )}
                     <td className="py-2.5 text-center font-bold text-[#00592B] [font-family:var(--font-oswald)]">{item.qty}</td>
                     <td className="py-2.5 text-right font-bold text-[#00592B] [font-family:var(--font-oswald)]">₹{item.price}</td>
                     {hasItemDiscounts && (

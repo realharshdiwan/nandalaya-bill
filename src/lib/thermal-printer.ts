@@ -53,6 +53,16 @@ interface BillData {
   notes: string | null;
 }
 
+interface ShopConfig {
+  legal_name?: string;
+  shop_address?: string;
+  shop_phone?: string;
+  gstin?: string;
+  state_name?: string;
+  state_code?: string;
+  shop_tagline?: string;
+}
+
 function padRight(str: string, len: number): string {
   if (str.length >= len) return str.slice(0, len);
   return str + " ".repeat(len - str.length);
@@ -66,8 +76,7 @@ function padLeft(str: string, len: number): string {
 export function generateReceipt(
   bill: BillData,
   items: BillItem[],
-  shopName = "NANDALAYA",
-  shopTagline = "SCHOOL UNIFORMS & GARMENTS",
+  shop?: ShopConfig,
   lineWidth = 32
 ): string {
   let receipt = "";
@@ -77,10 +86,19 @@ export function generateReceipt(
   receipt += alignCenter();
   receipt += setBold(true);
   receipt += setDoubleSize(true);
-  receipt += shopName + "\n";
+  receipt += (shop?.legal_name || "NANDALAYA") + "\n";
   receipt += setDoubleSize(false);
   receipt += setBold(false);
-  receipt += shopTagline + "\n";
+  receipt += (shop?.shop_tagline || "SCHOOL UNIFORMS & GARMENTS") + "\n";
+  if (shop?.shop_address) {
+    receipt += shop.shop_address + "\n";
+  }
+  if (shop?.gstin) {
+    receipt += `GSTIN: ${shop.gstin}\n`;
+  }
+  if (shop?.shop_phone) {
+    receipt += `Mob. ${shop.shop_phone}\n`;
+  }
   receipt += "-".repeat(lineWidth) + "\n";
 
   // Bill info

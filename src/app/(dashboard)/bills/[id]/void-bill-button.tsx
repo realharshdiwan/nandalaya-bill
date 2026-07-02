@@ -31,6 +31,12 @@ export default function VoidBillButton({ billId, billNumber }: Props) {
   async function handleVoid() {
     setLoading(true);
 
+    // First, get bill items to restore stock
+    const { data: billItems } = await supabase
+      .from("bill_items")
+      .select("product_id, qty")
+      .eq("bill_id", billId);
+
     const { error } = await supabase
       .from("bills")
       .update({
@@ -42,6 +48,17 @@ export default function VoidBillButton({ billId, billNumber }: Props) {
     if (error) {
       toast.error("Failed to void bill: " + error.message);
     } else {
+      // Restore stock for each item
+      if (billItems) {
+        for (const item of billItems) {
+          if (item.qty > 0) {
+            await supabase.rpc("increment_stock", {
+              p_product_id: item.product_id,
+              p_qty: item.qty,
+            });
+          }
+        }
+      }
       toast.success(`Bill ${billNumber} voided`);
       setOpen(false);
       startTransition(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import {
   printReceipt,
   generateReceipt,
 } from "@/lib/thermal-printer";
+import { createClient } from "@/lib/supabase/client";
 import PrinterDialog from "@/components/printer-dialog";
 
 interface BillItem {
@@ -41,6 +42,18 @@ export default function ThermalPrintButton({
 }) {
   const [printing, setPrinting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [shopConfig, setShopConfig] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    async function loadConfig() {
+      const supabase = createClient();
+      const { data } = await supabase.from("shop_config").select("key, value");
+      if (data) {
+        setShopConfig(Object.fromEntries(data.map((r) => [r.key, r.value])));
+      }
+    }
+    loadConfig();
+  }, []);
 
   async function handlePrint() {
     if (!isPrinterConnected()) {
@@ -49,7 +62,7 @@ export default function ThermalPrintButton({
     }
 
     setPrinting(true);
-    const receipt = generateReceipt(bill, items);
+    const receipt = generateReceipt(bill, items, shopConfig);
     const ok = await printReceipt(receipt, (msg) => {
       if (msg) toast.info(msg);
     });

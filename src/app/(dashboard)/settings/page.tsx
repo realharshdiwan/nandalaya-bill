@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -16,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff } from "lucide-react";
+import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import PrinterDialog from "@/components/printer-dialog";
 import { isPrinterConnected } from "@/lib/thermal-printer";
@@ -33,6 +34,17 @@ interface TeamMember {
   role: "owner" | "staff";
 }
 
+interface ShopConfig {
+  legal_name: string;
+  shop_address: string;
+  shop_phone: string;
+  gstin: string;
+  state_name: string;
+  state_code: string;
+  shop_tagline: string;
+  tax_type: string;
+}
+
 export default function SettingsPage() {
   const [sizes, setSizes] = useState<Size[]>([]);
   const [newLabel, setNewLabel] = useState("");
@@ -46,6 +58,11 @@ export default function SettingsPage() {
   const [upiLoading, setUpiLoading] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
+  const [shop, setShop] = useState<ShopConfig>({
+    legal_name: "", shop_address: "", shop_phone: "", gstin: "",
+    state_name: "", state_code: "", shop_tagline: "", tax_type: "composite",
+  });
+  const [shopLoading, setShopLoading] = useState(false);
   const supabase = createClient();
 
   async function loadSizes() {
@@ -63,6 +80,38 @@ export default function SettingsPage() {
       .eq("key", "upi_id")
       .single();
     if (data) setUpiId(data.value);
+  }
+
+  async function loadShop() {
+    const { data } = await supabase.from("shop_config").select("key, value");
+    if (data) {
+      const map = Object.fromEntries(data.map((r) => [r.key, r.value]));
+      setShop({
+        legal_name: map.legal_name || "",
+        shop_address: map.shop_address || "",
+        shop_phone: map.shop_phone || "",
+        gstin: map.gstin || "",
+        state_name: map.state_name || "",
+        state_code: map.state_code || "",
+        shop_tagline: map.shop_tagline || "",
+        tax_type: map.tax_type || "composite",
+      });
+    }
+  }
+
+  async function saveShop() {
+    setShopLoading(true);
+    const entries = Object.entries(shop);
+    const rows = entries.map(([key, value]) => ({ key, value }));
+    const { error } = await supabase
+      .from("shop_config")
+      .upsert(rows, { onConflict: "key" });
+    if (error) {
+      toast.error("Failed to save: " + error.message);
+    } else {
+      toast.success("Shop details saved");
+    }
+    setShopLoading(false);
   }
 
   async function loadTeam() {
@@ -204,6 +253,7 @@ export default function SettingsPage() {
     loadSizes();
     loadUpi();
     loadTeam();
+    loadShop();
   }, []);
   /* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
@@ -377,6 +427,52 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle>
+            <Receipt className="h-5 w-5 inline mr-2" />
+            SHOP DETAILS
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">LEGAL NAME</Label>
+            <Input placeholder="M/S. YOUR BUSINESS NAME" value={shop.legal_name} onChange={(e) => setShop({ ...shop, legal_name: e.target.value })} />
+          </div>
+          <div>
+            <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">ADDRESS</Label>
+            <Input placeholder="SHOP ADDRESS, CITY - PINCODE" value={shop.shop_address} onChange={(e) => setShop({ ...shop, shop_address: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PHONE</Label>
+              <Input placeholder="MOBILE NUMBER" value={shop.shop_phone} onChange={(e) => setShop({ ...shop, shop_phone: e.target.value })} />
+            </div>
+            <div>
+              <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">GSTIN</Label>
+              <Input placeholder="GSTIN NUMBER" value={shop.gstin} onChange={(e) => setShop({ ...shop, gstin: e.target.value })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">STATE</Label>
+              <Input placeholder="E.G. JHARKHAND" value={shop.state_name} onChange={(e) => setShop({ ...shop, state_name: e.target.value })} />
+            </div>
+            <div>
+              <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">STATE CODE</Label>
+              <Input placeholder="E.G. 20" value={shop.state_code} onChange={(e) => setShop({ ...shop, state_code: e.target.value })} />
+            </div>
+          </div>
+          <div>
+            <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">TAGLINE</Label>
+            <Input placeholder="E.G. SCHOOL UNIFORMS & GARMENTS" value={shop.shop_tagline} onChange={(e) => setShop({ ...shop, shop_tagline: e.target.value })} />
+          </div>
+          <Button onClick={saveShop} disabled={shopLoading || !shop.legal_name}>
+            <span>{shopLoading ? "SAVING..." : "SAVE SHOP DETAILS"}</span>
+          </Button>
         </CardContent>
       </Card>
 
