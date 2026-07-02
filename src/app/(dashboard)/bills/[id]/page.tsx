@@ -24,12 +24,6 @@ export default async function BillDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data: profile } = user
-    ? await supabase.from("profiles").select("role").eq("id", user.id).single()
-    : { data: null };
-  const isOwner = profile?.role === "owner";
-
   const { data: bill } = await supabase
     .from("bills")
     .select("*, schools(name, short_code)")
@@ -151,7 +145,7 @@ export default async function BillDetailPage({
               items={items || []}
             />
           )}
-          {!isVoided && isOwner && (
+          {!isVoided && (
             <VoidBillButton billId={bill.id} billNumber={bill.bill_number} />
           )}
         </div>

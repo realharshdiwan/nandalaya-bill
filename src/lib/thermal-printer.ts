@@ -285,7 +285,7 @@ export async function printReceipt(
     const data = encoder.encode(receiptText);
 
     // Write in chunks (BLE has max write size)
-    const CHUNK_SIZE = 20;
+    const CHUNK_SIZE = 200;
     for (let i = 0; i < data.length; i += CHUNK_SIZE) {
       const chunk = data.slice(i, i + CHUNK_SIZE);
       await characteristic.writeValue(chunk);

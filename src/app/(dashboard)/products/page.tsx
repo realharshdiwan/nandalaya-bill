@@ -409,7 +409,7 @@ export default function ProductsPage() {
               <Button variant="tertiary" onClick={() => setDeleteProduct(null)}>
                 <span>CANCEL</span>
               </Button>
-              <Button onClick={handleDelete} disabled={deleteLoading} className="bg-[#C42424] hover:bg-[#A01C1C]">
+              <Button variant="danger" onClick={handleDelete} disabled={deleteLoading}>
                 <span>{deleteLoading ? "DELETING..." : "DELETE"}</span>
               </Button>
             </div>

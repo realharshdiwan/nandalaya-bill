@@ -9,6 +9,7 @@ import {
   printReceipt,
   generateReceipt,
 } from "@/lib/thermal-printer";
+import PrinterDialog from "@/components/printer-dialog";
 
 interface BillItem {
   product_name: string;
@@ -39,10 +40,11 @@ export default function ThermalPrintButton({
   items: BillItem[];
 }) {
   const [printing, setPrinting] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   async function handlePrint() {
     if (!isPrinterConnected()) {
-      toast.error("No printer connected. Go to Settings to connect.");
+      setDialogOpen(true);
       return;
     }
 
@@ -56,13 +58,16 @@ export default function ThermalPrintButton({
   }
 
   return (
-    <Button
-      size="sm"
-      onClick={handlePrint}
-      disabled={printing}
-    >
-      <Printer className="mr-1 h-4 w-4" />
-      <span>{printing ? "PRINTING..." : "THERMAL"}</span>
-    </Button>
+    <>
+      <Button
+        size="sm"
+        onClick={handlePrint}
+        disabled={printing}
+      >
+        <Printer className="mr-1 h-4 w-4" />
+        <span>{printing ? "PRINTING..." : "THERMAL"}</span>
+      </Button>
+      <PrinterDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+    </>
   );
 }

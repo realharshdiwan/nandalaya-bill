@@ -91,9 +91,9 @@ export default function VoidBillButton({ billId, billNumber }: Props) {
                 <span>CANCEL</span>
               </Button>
               <Button
+                variant="danger"
                 onClick={handleVoid}
                 disabled={loading || isPending || confirmNumber !== billNumber}
-                className="bg-[#C42424] hover:bg-[#A01C1C]"
               >
                 <span>{loading ? "VOIDING..." : "VOID BILL"}</span>
               </Button>

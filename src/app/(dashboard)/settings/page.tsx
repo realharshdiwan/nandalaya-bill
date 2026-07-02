@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useProfile } from "@/lib/hooks/use-profile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,8 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff, Lock } from "lucide-react";
+import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
+import PrinterDialog from "@/components/printer-dialog";
+import { isPrinterConnected } from "@/lib/thermal-printer";
 
 interface Size {
   id: string;
@@ -46,7 +47,6 @@ export default function SettingsPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const supabase = createClient();
-  const { isOwner, loading: profileLoading } = useProfile();
 
   async function loadSizes() {
     const { data } = await supabase
@@ -203,9 +203,8 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSizes();
     loadUpi();
-    if (isOwner) loadTeam();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOwner]);
+    loadTeam();
+  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
@@ -215,11 +214,10 @@ export default function SettingsPage() {
           SETTINGS
         </h1>
         <p className="mt-1 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-          {isOwner ? "MANAGE YOUR SHOP" : "READ-ONLY — ASK OWNER TO MAKE CHANGES"}
+          MANAGE YOUR SHOP
         </p>
       </div>
 
-      {/* SIZES — visible to everyone */}
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
@@ -228,52 +226,45 @@ export default function SettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isOwner ? (
-            <form onSubmit={editingSize ? handleEdit : handleAdd} className="flex gap-3">
-              <Input
-                placeholder="SIZE LABEL (E.G. 28, M, L)"
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                required
-                className="flex-1"
-              />
-              <Input
-                type="number"
-                placeholder="SORT ORDER"
-                value={newNumeric}
-                onChange={(e) => setNewNumeric(e.target.value)}
-                className="w-24"
-              />
+          <form onSubmit={editingSize ? handleEdit : handleAdd} className="flex gap-3">
+            <Input
+              placeholder="SIZE LABEL (E.G. 28, M, L)"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              required
+              className="flex-1"
+            />
+            <Input
+              type="number"
+              placeholder="SORT ORDER"
+              value={newNumeric}
+              onChange={(e) => setNewNumeric(e.target.value)}
+              className="w-24"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              className="shrink-0"
+              disabled={loading || !newLabel}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            {editingSize && (
               <Button
-                type="submit"
+                type="button"
                 size="icon"
+                variant="tertiary"
                 className="shrink-0"
-                disabled={loading || !newLabel}
+                onClick={() => {
+                  setEditingSize(null);
+                  setNewLabel("");
+                  setNewNumeric("");
+                }}
               >
-                <Plus className="h-4 w-4" />
+                <span>✕</span>
               </Button>
-              {editingSize && (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="tertiary"
-                  className="shrink-0"
-                  onClick={() => {
-                    setEditingSize(null);
-                    setNewLabel("");
-                    setNewNumeric("");
-                  }}
-                >
-                  <span>✕</span>
-                </Button>
-              )}
-            </form>
-          ) : (
-            <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold flex items-center gap-2">
-              <Lock className="h-3 w-3" />
-              ONLY OWNER CAN ADD OR EDIT SIZES
-            </p>
-          )}
+            )}
+          </form>
 
           <div className="space-y-2">
             {sizes.map((size) => (
@@ -291,29 +282,26 @@ export default function SettingsPage() {
                     </span>
                   )}
                 </div>
-                {isOwner && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => openEditDialog(size)}
-                      className="text-[#4D8A6B] hover:text-[#0023D1]"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => openDeleteDialog(size)}
-                      className="text-[#4D8A6B] hover:text-[#C42424]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openEditDialog(size)}
+                    className="text-[#4D8A6B] hover:text-[#0023D1]"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => openDeleteDialog(size)}
+                    className="text-[#4D8A6B] hover:text-[#C42424]"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* UPI — visible to everyone, editable by owner only */}
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
@@ -325,91 +313,74 @@ export default function SettingsPage() {
           <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
             UPI ID FOR QR CODE PAYMENTS
           </p>
-          {isOwner ? (
-            <div className="flex gap-3">
-              <Input
-                placeholder="YOUR-UPI-ID@paytm (e.g. nandalaya@upi)"
-                value={upiId}
-                onChange={(e) => setUpiId(e.target.value)}
-                className="flex-1"
-              />
-              <Button onClick={saveUpi} disabled={upiLoading || !upiId}>
-                <span>{upiLoading ? "SAVING..." : "SAVE"}</span>
-              </Button>
-            </div>
-          ) : (
-            <div className="rounded-[12px] border-2 border-black px-3 py-2">
-              <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
-                {upiId || "NOT CONFIGURED"}
-              </p>
-            </div>
-          )}
+          <div className="flex gap-3">
+            <Input
+              placeholder="YOUR-UPI-ID@paytm (e.g. nandalaya@upi)"
+              value={upiId}
+              onChange={(e) => setUpiId(e.target.value)}
+              className="flex-1"
+            />
+            <Button onClick={saveUpi} disabled={upiLoading || !upiId}>
+              <span>{upiLoading ? "SAVING..." : "SAVE"}</span>
+            </Button>
+          </div>
           <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
             Set your UPI VPA to generate QR codes on bills for exact-amount payments
           </p>
         </CardContent>
       </Card>
 
-      {/* TEAM — owner only */}
-      {isOwner && (
-        <Card className="max-w-lg">
-          <CardHeader>
-            <CardTitle>
-              <Users className="h-5 w-5 inline mr-2" />
-              TEAM
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
-              MANAGE WHO CAN ACCESS THE SYSTEM
-            </p>
-            {teamLoading ? (
-              <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase">LOADING...</p>
-            ) : (
-              <div className="space-y-2">
-                {teamMembers.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between rounded-[12px] border-2 border-black px-3 py-2.5"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
-                        {member.display_name || "UNKNOWN USER"}
-                      </span>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase [font-family:var(--font-oswald)] ${
-                        member.role === "owner"
-                          ? "bg-[#E374C7] text-white"
-                          : "bg-[#0023D1] text-white"
-                      }`}>
-                        {member.role}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleRole(member)}
-                    >
-                      {member.role === "owner" ? (
-                        <><ShieldOff className="mr-1 h-3 w-3" /><span>DEMOTE</span></>
-                      ) : (
-                        <><Shield className="mr-1 h-3 w-3" /><span>PROMOTE</span></>
-                      )}
-                    </Button>
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle>
+            <Users className="h-5 w-5 inline mr-2" />
+            TEAM
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+            MANAGE WHO CAN ACCESS THE SYSTEM
+          </p>
+          {teamLoading ? (
+            <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase">LOADING...</p>
+          ) : (
+            <div className="space-y-2">
+              {teamMembers.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between rounded-[12px] border-2 border-black px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+                      {member.display_name || "UNKNOWN USER"}
+                    </span>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase [font-family:var(--font-oswald)] ${
+                      member.role === "owner"
+                        ? "bg-[#E374C7] text-white"
+                        : "bg-[#0023D1] text-white"
+                    }`}>
+                      {member.role}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
-            <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
-              Owners can void bills, access settings, and see financial summaries. Staff can create and edit bills.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleRole(member)}
+                  >
+                    {member.role === "owner" ? (
+                      <><ShieldOff className="mr-1 h-3 w-3" /><span>DEMOTE</span></>
+                    ) : (
+                      <><Shield className="mr-1 h-3 w-3" /><span>PROMOTE</span></>
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* THERMAL PRINTER — owner only */}
-      {isOwner && (
-        <ThermalPrinterCard />
-      )}
+      <PrinterSection />
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setPriceCount(0); } }}>
         <DialogContent>
@@ -432,7 +403,7 @@ export default function SettingsPage() {
               <Button variant="tertiary" onClick={() => { setDeleteTarget(null); setPriceCount(0); }}>
                 <span>CANCEL</span>
               </Button>
-              <Button onClick={confirmDelete} disabled={deleteLoading} className="bg-[#C42424] hover:bg-[#A01C1C]">
+              <Button variant="danger" onClick={confirmDelete} disabled={deleteLoading}>
                 <span>{deleteLoading ? "DELETING..." : "DELETE"}</span>
               </Button>
             </div>
@@ -443,30 +414,17 @@ export default function SettingsPage() {
   );
 }
 
-function ThermalPrinterCard() {
+function PrinterSection() {
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  async function handleConnect() {
-    if (connected) {
-      const { disconnectPrinter } = await import("@/lib/thermal-printer");
-      disconnectPrinter();
-      setConnected(false);
-      setStatus("Disconnected");
-      toast.info("Printer disconnected");
-      return;
-    }
-
-    setLoading(true);
-    const { connectToPrinter } = await import("@/lib/thermal-printer");
-    const ok = await connectToPrinter((msg) => setStatus(msg));
-    setConnected(ok);
-    if (ok) {
-      toast.success("Printer connected!");
-    }
-    setLoading(false);
-  }
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    const check = () => setConnected(isPrinterConnected());
+    check();
+    const interval = setInterval(check, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <Card className="max-w-lg">
@@ -481,11 +439,11 @@ function ThermalPrinterCard() {
           CONNECT A BLUETOOTH THERMAL PRINTER
         </p>
         <div className="flex gap-3 items-center">
-          <Button onClick={handleConnect} disabled={loading}>
+          <Button onClick={() => setDialogOpen(true)}>
             {connected ? (
-              <><WifiOff className="mr-1 h-4 w-4" /><span>DISCONNECT</span></>
+              <><WifiOff className="mr-1 h-4 w-4" /><span>MANAGE</span></>
             ) : (
-              <><Wifi className="mr-1 h-4 w-4" /><span>{loading ? "SEARCHING..." : "CONNECT"}</span></>
+              <><Wifi className="mr-1 h-4 w-4" /><span>CONNECT</span></>
             )}
           </Button>
           {connected && (
@@ -495,15 +453,11 @@ function ThermalPrinterCard() {
             </span>
           )}
         </div>
-        {status && (
-          <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
-            {status}
-          </p>
-        )}
         <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
           Works with ESC/POS compatible Bluetooth thermal printers (80mm or 58mm). Connect once here, then use the THERMAL button on any bill to print receipts.
         </p>
       </CardContent>
+      <PrinterDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </Card>
   );
 }

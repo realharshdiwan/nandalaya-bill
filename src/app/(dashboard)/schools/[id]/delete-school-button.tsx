@@ -108,9 +108,9 @@ export default function DeleteSchoolButton({ schoolId, schoolName }: Props) {
                 <span>CANCEL</span>
               </Button>
               <Button
+                variant="danger"
                 onClick={handleDelete}
                 disabled={loading || confirmName !== schoolName}
-                className="bg-[#C42424] hover:bg-[#A01C1C]"
               >
                 <span>{loading ? "DELETING..." : "DELETE"}</span>
               </Button>

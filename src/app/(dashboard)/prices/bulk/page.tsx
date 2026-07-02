@@ -266,10 +266,10 @@ export default function BulkPricePage() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-[16px]">SELECT SCHOOLS ({selectedSchools.length} SELECTED)</CardTitle>
             <div className="flex gap-2">
-              <Button variant="tertiary" onClick={selectAllSchools} className="text-[12px] h-8">
+              <Button variant="tertiary" onClick={selectAllSchools} size="xs">
                 <span>ALL</span>
               </Button>
-              <Button variant="tertiary" onClick={clearSchools} className="text-[12px] h-8">
+              <Button variant="tertiary" onClick={clearSchools} size="xs">
                 <span>CLEAR</span>
               </Button>
             </div>

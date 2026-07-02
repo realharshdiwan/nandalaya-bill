@@ -30,7 +30,7 @@ const buttonVariants = cva(
         sm: "h-8 px-[22px] py-[8px] text-[18px] rounded-[16px] shadow-[4px_4px_0_0_#000]",
         lg: "h-12 px-[40px] py-[14px] text-[28px] shadow-[8px_8px_0_0_#000]",
         xl: "h-14 px-[48px] py-[18px] text-[32px] shadow-[10px_10px_0_0_#000]",
-        icon: "size-11 rounded-[20px] shadow-[6px_6px_0_0_#000] skew-x-[-15deg] [&>span]:skew-x-[15deg]",
+        icon: "size-11 rounded-[20px] shadow-[6px_6px_0_0_#000]",
         "icon-xs": "size-7 rounded-[12px] shadow-[2px_2px_0_0_#000]",
         "icon-sm": "size-8 rounded-[16px] shadow-[4px_4px_0_0_#000]",
         "icon-lg": "size-12 rounded-[20px] shadow-[8px_8px_0_0_#000]",
