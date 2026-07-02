@@ -47,13 +47,13 @@ export default function MarkPaidButton({ billId, isPaid }: Props) {
   if (optimisticPaid) {
     return (
       <Button
-        variant="ghost"
+        variant="tertiary"
         size="sm"
         onClick={handleTogglePaid}
         disabled={loading || isPending}
       >
-        <CheckCircle className="mr-1 h-4 w-4 text-[#00592B]" />
-        <span className="text-[#00592B]">PAID</span>
+        <CheckCircle className="mr-1 h-4 w-4" />
+        <span>PAID</span>
       </Button>
     );
   }

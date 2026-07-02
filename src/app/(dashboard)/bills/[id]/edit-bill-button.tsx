@@ -41,7 +41,7 @@ export default function EditBillButton({
 
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="tertiary" size="sm" onClick={() => setOpen(true)}>
         <Pencil className="mr-1 h-4 w-4" />
         <span>EDIT</span>
       </Button>
