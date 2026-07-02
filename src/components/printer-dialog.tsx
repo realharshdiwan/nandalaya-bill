@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, Wifi, WifiOff, Bluetooth } from "lucide-react";
+import { Wifi, WifiOff, Bluetooth } from "lucide-react";
 import { toast } from "sonner";
 import {
   isPrinterConnected,
@@ -22,21 +22,17 @@ interface Props {
 }
 
 export default function PrinterDialog({ open, onOpenChange }: Props) {
-  const [connected, setConnected] = useState(false);
   const [printerName, setPrinterName] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
 
-  useEffect(() => {
-    setConnected(isPrinterConnected());
-  }, [open]);
+  const connected = open ? isPrinterConnected() : false;
 
   async function handleConnect() {
     setLoading(true);
     setStatus("Searching for printer...");
 
     const ok = await connectToPrinter((msg) => setStatus(msg));
-    setConnected(ok);
 
     if (ok) {
       toast.success("Printer connected!");
@@ -46,7 +42,6 @@ export default function PrinterDialog({ open, onOpenChange }: Props) {
 
   function handleDisconnect() {
     disconnectPrinter();
-    setConnected(false);
     setPrinterName("");
     setStatus("Disconnected");
     toast.info("Printer disconnected");

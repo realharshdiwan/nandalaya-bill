@@ -199,13 +199,13 @@ export default function SettingsPage() {
     setNewNumeric(size.numeric_value !== null ? String(size.numeric_value) : "");
   }
 
-  /* eslint-disable react-hooks/set-state-in-effect */
+  /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
   useEffect(() => {
     loadSizes();
     loadUpi();
     loadTeam();
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  /* eslint-enable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
   return (
     <div className="space-y-6">
@@ -418,7 +418,6 @@ function PrinterSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [connected, setConnected] = useState(false);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     const check = () => setConnected(isPrinterConnected());
     check();

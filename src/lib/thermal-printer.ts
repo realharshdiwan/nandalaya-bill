@@ -24,14 +24,6 @@ function alignLeft(): string {
   return `${ESC}a\x00`;
 }
 
-function alignRight(): string {
-  return `${ESC}a\x02`;
-}
-
-function lineFeed(n = 1): string {
-  return `${ESC}d${String.fromCharCode(n + 1)}`;
-}
-
 function cutPaper(): string {
   return `${GS}V\x01`; // Full cut
 }
@@ -69,13 +61,6 @@ function padRight(str: string, len: number): string {
 function padLeft(str: string, len: number): string {
   if (str.length >= len) return str.slice(0, len);
   return " ".repeat(len - str.length) + str;
-}
-
-function centerPad(str: string, len: number): string {
-  if (str.length >= len) return str.slice(0, len);
-  const left = Math.floor((len - str.length) / 2);
-  const right = len - str.length - left;
-  return " ".repeat(left) + str + " ".repeat(right);
 }
 
 export function generateReceipt(
