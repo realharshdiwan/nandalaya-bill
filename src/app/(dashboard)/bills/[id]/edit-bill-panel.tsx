@@ -403,7 +403,7 @@ export default function EditBillPanel({
                       )}
                     </p>
                   </div>
-                  <button onClick={() => removeItem(item.key)} className="text-[#4D8A6B] hover:text-[#C42424]">
+                  <button onClick={() => removeItem(item.key)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#C42424]/10 hover:text-[#C42424] cursor-pointer">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>

@@ -175,7 +175,8 @@
   /* Hide sidebar, header, and app chrome */
   aside,
   header,
-  .no-print {
+  .no-print,
+  .fixed {
     display: none !important;
     visibility: hidden !important;
   }

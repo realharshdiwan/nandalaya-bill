@@ -324,7 +324,7 @@ export default function BulkPricePage() {
             <table className="w-full text-[14px] border-collapse">
               <thead>
                 <tr>
-                  <th className="text-left pb-3 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold sticky left-0 bg-[#00592B]">
+                  <th className="text-left pb-3 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold bg-[#00592B] sticky left-0 z-10">
                     PRODUCT
                   </th>
                   {sizes.map((size) => (
@@ -340,7 +340,7 @@ export default function BulkPricePage() {
               <tbody>
                 {products.map((product) => (
                   <tr key={product.id}>
-                    <td className="py-2 pr-4 font-bold text-white [font-family:var(--font-oswald)] uppercase sticky left-0 bg-[#00592B]">
+                    <td className="py-2 pr-4 font-bold text-white [font-family:var(--font-oswald)] uppercase sticky left-0 bg-[#00592B] z-10">
                       {product.name}
                     </td>
                     {sizes.map((size) => (
@@ -352,7 +352,7 @@ export default function BulkPricePage() {
                           placeholder="₹"
                           value={matrix[product.id]?.[size.id] || ""}
                           onChange={(e) => updateCell(product.id, size.id, e.target.value)}
-                          className="w-full text-center h-9 text-[13px]"
+                          className="w-full text-center h-11 text-[14px]"
                         />
                       </td>
                     ))}
@@ -364,7 +364,7 @@ export default function BulkPricePage() {
                         placeholder="₹"
                         value={matrix[product.id]?.["__no_size__"] || ""}
                         onChange={(e) => updateCell(product.id, "__no_size__", e.target.value)}
-                        className="w-full text-center h-9 text-[13px] border-[#E374C7]"
+                        className="w-full text-center h-11 text-[14px] border-[#E374C7]"
                       />
                     </td>
                   </tr>

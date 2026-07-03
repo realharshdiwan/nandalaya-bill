@@ -163,39 +163,37 @@ export default function SchoolDetailPage() {
 
   return (
     <div className="space-y-6 pb-24">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <Link
-            href="/schools"
-            className="inline-flex items-center text-[14px] text-[#B3D6BF] hover:text-white [font-family:var(--font-oswald)] uppercase font-bold"
-          >
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            SCHOOLS
-          </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)] uppercase">
-              {school.name}
-            </h1>
-            {school.short_code && <Badge>{school.short_code}</Badge>}
-          </div>
-          {(school.address || school.phone) && (
-            <div className="flex items-center gap-4 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-              {school.address && <span>{school.address}</span>}
-              {school.phone && <span>{school.phone}</span>}
-            </div>
-          )}
+      <div className="space-y-3">
+        <Link
+          href="/schools"
+          className="inline-flex items-center text-[14px] text-[#B3D6BF] hover:text-white [font-family:var(--font-oswald)] uppercase font-bold"
+        >
+          <ArrowLeft className="mr-1 h-4 w-4" />
+          SCHOOLS
+        </Link>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)] uppercase">
+            {school.name}
+          </h1>
+          {school.short_code && <Badge>{school.short_code}</Badge>}
         </div>
-        <div className="flex items-center gap-2">
+        {(school.address || school.phone) && (
+          <div className="flex items-center gap-4 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
+            {school.address && <span>{school.address}</span>}
+            {school.phone && <span>{school.phone}</span>}
+          </div>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
           <Link href={`/schools/${id}/edit`}>
-            <Button variant="tertiary">
-              <Pencil className="mr-2 h-4 w-4" />
+            <Button variant="tertiary" size="sm">
+              <Pencil className="mr-1 h-4 w-4" />
               <span>EDIT</span>
             </Button>
           </Link>
           <DeleteSchoolButton schoolId={id} schoolName={school.name} />
           <Link href={`/prices?school_id=${id}`}>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
+            <Button size="sm">
+              <Plus className="mr-1 h-4 w-4" />
               <span>ADD PRICE</span>
             </Button>
           </Link>
@@ -236,26 +234,26 @@ export default function SchoolDetailPage() {
                           <div className="flex items-center gap-1 ml-1">
                             <button
                               onClick={() => handleRemove(entry.product_id, entry.size_id)}
-                              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
+                              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
                             >
-                              <Minus className="h-3 w-3" />
+                              <Minus className="h-5 w-5" />
                             </button>
-                            <span className="text-[13px] font-bold [font-family:var(--font-oswald)] min-w-[20px] text-center">
+                            <span className="text-[14px] font-bold [font-family:var(--font-oswald)] min-w-[24px] text-center">
                               {qty}
                             </span>
                             <button
                               onClick={() => handleAdd(entry)}
-                              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
+                              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
                             >
-                              <Plus className="h-3 w-3" />
+                              <Plus className="h-5 w-5" />
                             </button>
                           </div>
                         ) : (
                           <button
                             onClick={() => handleAdd(entry)}
-                            className="ml-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#00592B] text-[#00592B] hover:bg-[#00592B] hover:text-white transition-all cursor-pointer"
+                            className="ml-1 flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#00592B] text-[#00592B] hover:bg-[#00592B] hover:text-white transition-all cursor-pointer"
                           >
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-5 w-5" />
                           </button>
                         )}
                       </div>

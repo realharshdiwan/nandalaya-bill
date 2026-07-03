@@ -102,7 +102,7 @@ export function Sidebar({
                 href={item.href}
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 rounded-[20px] px-4 py-3 text-[16px] font-bold uppercase transition-all [font-family:var(--font-oswald)]",
+                  "flex items-center gap-3 rounded-[20px] px-4 py-3.5 text-[16px] font-bold uppercase transition-all [font-family:var(--font-oswald)] min-h-[48px]",
                   isActive
                     ? "bg-[#00592B] text-white shadow-[2px_2px_0_0_#000] border-2 border-black"
                     : "text-[#00592B] hover:bg-[#E374C7] hover:text-black"

@@ -207,14 +207,14 @@ export default function ProductsPage() {
                   <button
                     onClick={() => moveProduct(index, "up")}
                     disabled={index === 0}
-                    className="text-[#4D8A6B] hover:text-white disabled:opacity-30 disabled:hover:text-[#4D8A6B]"
+                    className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#00592B]/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#4D8A6B] cursor-pointer"
                   >
                     <ChevronUp className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => moveProduct(index, "down")}
                     disabled={index === products.length - 1}
-                    className="text-[#4D8A6B] hover:text-white disabled:opacity-30 disabled:hover:text-[#4D8A6B]"
+                    className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#00592B]/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#4D8A6B] cursor-pointer"
                   >
                     <ChevronDown className="h-5 w-5" />
                   </button>
@@ -244,13 +244,13 @@ export default function ProductsPage() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => openEditDialog(product)}
-                    className="text-[#4D8A6B] hover:text-[#0023D1]"
+                    className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#00592B]/10 hover:text-[#0023D1] cursor-pointer"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setDeleteProduct(product)}
-                    className="text-[#4D8A6B] hover:text-[#C42424]"
+                    className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#C42424]/10 hover:text-[#C42424] cursor-pointer"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

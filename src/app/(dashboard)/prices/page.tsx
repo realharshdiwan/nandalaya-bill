@@ -238,7 +238,7 @@ export default function PricesPage() {
           FILTER BY SCHOOL:
         </Label>
         <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "all")} items={[{ value: "all", label: "ALL SCHOOLS" }, ...schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))]}>
-          <SelectTrigger className="w-[250px]">
+          <SelectTrigger className="w-full max-w-[250px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -279,18 +279,18 @@ export default function PricesPage() {
                             <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] text-[16px]">
                               ₹{entry.price}
                             </span>
-                            <div className="hidden group-hover:flex items-center gap-1 ml-1">
+                            <div className="flex items-center gap-1 ml-1">
                               <button
                                 onClick={() => openEditDialog(entry)}
-                                className="text-[#4D8A6B] hover:text-[#0023D1]"
+                                className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#00592B]/10 hover:text-[#0023D1] cursor-pointer"
                               >
-                                <Pencil className="h-3.5 w-3.5" />
+                                <Pencil className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={() => handleDelete(entry.id)}
-                                className="text-[#4D8A6B] hover:text-[#C42424]"
+                                className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#C42424]/10 hover:text-[#C42424] cursor-pointer"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           </div>

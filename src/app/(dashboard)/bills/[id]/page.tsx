@@ -95,29 +95,27 @@ export default async function BillDetailPage({
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       {/* Header — hidden during print */}
-      <div className="flex items-start justify-between no-print">
-        <div className="space-y-1">
-          <Link
-            href="/bills"
-            className="inline-flex items-center text-[14px] text-[#B3D6BF] hover:text-white [font-family:var(--font-oswald)] uppercase font-bold"
-          >
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            BILLS
-          </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)]">
-              {bill.bill_number}
-            </h1>
-            <Badge>{bill.payment_method === "split" ? "SPLIT" : bill.payment_method}</Badge>
-            <Badge className={bill.is_paid ? "bg-[#00592B]" : "bg-[#E374C7]"}>
-              {bill.is_paid ? "PAID" : "UNPAID"}
-            </Badge>
-            {isVoided && (
-              <Badge className="bg-[#C42424]">VOIDED</Badge>
-            )}
-          </div>
+      <div className="space-y-3 no-print">
+        <Link
+          href="/bills"
+          className="inline-flex items-center text-[14px] text-[#B3D6BF] hover:text-white [font-family:var(--font-oswald)] uppercase font-bold"
+        >
+          <ArrowLeft className="mr-1 h-4 w-4" />
+          BILLS
+        </Link>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)]">
+            {bill.bill_number}
+          </h1>
+          <Badge>{bill.payment_method === "split" ? "SPLIT" : bill.payment_method}</Badge>
+          <Badge className={bill.is_paid ? "bg-[#00592B]" : "bg-[#E374C7]"}>
+            {bill.is_paid ? "PAID" : "UNPAID"}
+          </Badge>
+          {isVoided && (
+            <Badge className="bg-[#C42424]">VOIDED</Badge>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {!isVoided && (
             <EditBillButton
               bill={{
@@ -279,7 +277,7 @@ export default async function BillDetailPage({
           </div>
 
           {/* Items table */}
-          <div>
+          <div className="overflow-x-auto">
             <table className="w-full text-[14px]">
               <thead>
                 <tr className="border-b-2 border-black text-left">
