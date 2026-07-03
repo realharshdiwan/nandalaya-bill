@@ -44,8 +44,16 @@ GROUP BY product_id, size_id;
 ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Authenticated full access" ON suppliers
-  FOR ALL USING (auth.role() = 'authenticated');
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Authenticated full access' AND tablename = 'suppliers') THEN
+    CREATE POLICY "Authenticated full access" ON suppliers
+      FOR ALL USING (auth.role() = 'authenticated');
+  END IF;
+END $$;
 
-CREATE POLICY "Authenticated full access" ON inventory
-  FOR ALL USING (auth.role() = 'authenticated');
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Authenticated full access' AND tablename = 'inventory') THEN
+    CREATE POLICY "Authenticated full access" ON inventory
+      FOR ALL USING (auth.role() = 'authenticated');
+  END IF;
+END $$;

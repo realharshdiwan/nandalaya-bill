@@ -13,7 +13,11 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS current_stock INT DEFAULT 0;
 
 -- Product categories (enum-like via CHECK constraint)
 ALTER TABLE products ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'uniform';
-ALTER TABLE products ADD CONSTRAINT products_category_check CHECK (category IN ('uniform', 'shoes', 'accessories', 'other'));
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_category_check') THEN
+    ALTER TABLE products ADD CONSTRAINT products_category_check CHECK (category IN ('uniform', 'shoes', 'accessories', 'other'));
+  END IF;
+END $$;
 
 -- User roles: owner vs staff
 ALTER TABLE schools ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id);
