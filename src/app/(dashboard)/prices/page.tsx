@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Grid3x3 } from "lucide-react";
+import { Plus, Pencil, Trash2, Grid3x3, Layers, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -47,27 +47,38 @@ interface Size {
   numeric_value: number | null;
 }
 
+interface SchoolGroup {
+  id: string;
+  name: string;
+}
+
 interface PriceEntry {
   id: string;
-  school_id: string;
+  school_id: string | null;
+  school_group_id: string | null;
   product_id: string;
   size_id: string | null;
   price: number;
-  schools: School;
+  schools: School | null;
+  school_groups: SchoolGroup | null;
   products: Product;
   sizes: Size | null;
 }
 
 export default function PricesPage() {
   const [schools, setSchools] = useState<School[]>([]);
+  const [schoolGroups, setSchoolGroups] = useState<SchoolGroup[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [sizes, setSizes] = useState<Size[]>([]);
   const [prices, setPrices] = useState<PriceEntry[]>([]);
+  const [mode, setMode] = useState<"school" | "group">("school");
   const [selectedSchool, setSelectedSchool] = useState<string>("all");
+  const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPrice, setEditingPrice] = useState<PriceEntry | null>(null);
 
-  const [formSchool, setFormSchool] = useState("");
+  const [formMode, setFormMode] = useState<"school" | "group">("school");
+  const [formOwner, setFormOwner] = useState("");
   const [formProduct, setFormProduct] = useState("");
   const [formSize, setFormSize] = useState("");
   const [formPrice, setFormPrice] = useState("");
@@ -92,18 +103,19 @@ export default function PricesPage() {
   }, [products, supabase]);
 
   async function loadData() {
-    const [schoolsRes, productsRes] = await Promise.all([
+    const [schoolsRes, groupsRes, productsRes] = await Promise.all([
       supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
+      supabase.from("school_groups").select("id, name").order("sort_order"),
       supabase.from("products").select("id, name, category, size_group_id").order("name"),
     ]);
 
     setSchools(schoolsRes.data || []);
+    setSchoolGroups(groupsRes.data || []);
     setProducts(productsRes.data || []);
 
     await loadPrices();
   }
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const schoolId = params.get("school_id");
@@ -111,10 +123,8 @@ export default function PricesPage() {
       setSelectedSchool(schoolId);
     }
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (formProduct) {
       loadSizesForProduct(formProduct);
@@ -123,55 +133,58 @@ export default function PricesPage() {
     }
     setFormSize("");
   }, [formProduct, loadSizesForProduct]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function loadPrices() {
     const { data } = await supabase
       .from("price_list")
-      .select("id, school_id, product_id, size_id, price, schools(id, name, short_code), products(id, name, category), sizes(id, label, numeric_value)")
+      .select(`id, school_id, school_group_id, product_id, size_id, price, 
+        schools!left(id, name, short_code), 
+        school_groups!left(id, name), 
+        products(id, name, category), 
+        sizes(id, label, numeric_value)`)
       .eq("is_active", true)
-      .order("schools(name)");
-
-    interface RawPriceListRow {
-      id: string;
-      school_id: string;
-      product_id: string;
-      size_id: string | null;
-      price: number;
-      schools: { id: string; name: string; short_code: string | null }[] | { id: string; name: string; short_code: string | null };
-      products: { id: string; name: string; category: string }[] | { id: string; name: string; category: string };
-      sizes: { id: string; label: string; numeric_value: number | null }[] | { id: string; label: string; numeric_value: number | null } | null;
-    }
+      .order("schools(name)", { nullsFirst: false });
 
     setPrices(
-      (data || []).map((row: RawPriceListRow) => ({
+      ((data as any[]) || []).map((row: any) => ({
         ...row,
-        schools: Array.isArray(row.schools) ? row.schools[0] : row.schools,
+        schools: row.schools ? (Array.isArray(row.schools) ? row.schools[0] : row.schools) : null,
+        school_groups: row.school_groups ? (Array.isArray(row.school_groups) ? row.school_groups[0] : row.school_groups) : null,
         products: Array.isArray(row.products) ? row.products[0] : row.products,
         sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
       })) as PriceEntry[]
     );
   }
 
-  const filteredPrices =
-    selectedSchool === "all"
-      ? prices
-      : prices.filter((p) => p.school_id === selectedSchool);
+  const filteredPrices = prices.filter((p) => {
+    if (mode === "school") {
+      if (p.school_group_id) return false;
+      if (selectedSchool !== "all" && p.school_id !== selectedSchool) return false;
+      return true;
+    } else {
+      if (p.school_id) return false;
+      if (selectedGroup !== "all" && p.school_group_id !== selectedGroup) return false;
+      return true;
+    }
+  });
 
   const grouped = filteredPrices.reduce<
     Record<string, Record<string, PriceEntry[]>>
   >((acc, price) => {
-    const schoolName = price.schools?.short_code || price.schools?.name || "Unknown";
+    const ownerName = mode === "school"
+      ? price.schools?.short_code || price.schools?.name || "Unknown"
+      : price.school_groups?.name || "Unknown";
     const productName = price.products?.name || "Unknown";
-    if (!acc[schoolName]) acc[schoolName] = {};
-    if (!acc[schoolName][productName]) acc[schoolName][productName] = [];
-    acc[schoolName][productName].push(price);
+    if (!acc[ownerName]) acc[ownerName] = {};
+    if (!acc[ownerName][productName]) acc[ownerName][productName] = [];
+    acc[ownerName][productName].push(price);
     return acc;
   }, {});
 
   function openAddDialog() {
     setEditingPrice(null);
-    setFormSchool("");
+    setFormMode(mode);
+    setFormOwner("");
     setFormProduct("");
     setFormSize("");
     setFormPrice("");
@@ -180,7 +193,13 @@ export default function PricesPage() {
 
   function openEditDialog(price: PriceEntry) {
     setEditingPrice(price);
-    setFormSchool(price.school_id);
+    if (price.school_id) {
+      setFormMode("school");
+      setFormOwner(price.school_id);
+    } else {
+      setFormMode("group");
+      setFormOwner(price.school_group_id || "");
+    }
     setFormProduct(price.product_id);
     setFormSize(price.size_id ? price.size_id : "__none__");
     setFormPrice(String(price.price));
@@ -192,12 +211,19 @@ export default function PricesPage() {
     setLoading(true);
 
     const actualSizeId = formSize === "__none__" ? null : formSize;
-    const payload = {
-      school_id: formSchool,
+    const payload: Record<string, any> = {
       product_id: formProduct,
       size_id: actualSizeId,
       price: parseFloat(formPrice),
     };
+
+    if (formMode === "school") {
+      payload.school_id = formOwner;
+      payload.school_group_id = null;
+    } else {
+      payload.school_group_id = formOwner;
+      payload.school_id = null;
+    }
 
     if (editingPrice) {
       const { error } = await supabase
@@ -244,6 +270,10 @@ export default function PricesPage() {
     await loadPrices();
   }
 
+  const totalEntries = mode === "school"
+    ? prices.filter((p) => !p.school_group_id).length
+    : prices.filter((p) => !p.school_id).length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -252,14 +282,14 @@ export default function PricesPage() {
             PRICE LIST
           </h1>
           <p className="mt-1 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-            {prices.length} PRICES ACROSS {schools.length} SCHOOLS
+            {totalEntries} PRICES — {mode === "school" ? `${schools.length} SCHOOLS` : `${schoolGroups.length} GROUPS`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/prices/bulk">
             <Button variant="tertiary">
               <Grid3x3 className="mr-2 h-4 w-4" />
-              <span>BULK ENTRY</span>
+              <span>BULK</span>
             </Button>
           </Link>
           <Button onClick={openAddDialog}>
@@ -269,31 +299,63 @@ export default function PricesPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <Label className="text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-          FILTER BY SCHOOL:
-        </Label>
-        <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "all")} items={[{ value: "all", label: "ALL SCHOOLS" }, ...schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))]}>
-          <SelectTrigger className="w-full max-w-[250px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">ALL SCHOOLS</SelectItem>
-            {schools.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex rounded-[12px] border-2 border-black overflow-hidden">
+          <button
+            onClick={() => setMode("school")}
+            className={`px-4 py-2 text-[14px] font-bold [font-family:var(--font-oswald)] uppercase cursor-pointer transition-colors ${
+              mode === "school" ? "bg-[#00592B] text-white" : "bg-white text-[#00592B] hover:bg-gray-50"
+            }`}
+          >
+            <Building2 className="h-4 w-4 inline mr-1" />
+            BY SCHOOL
+          </button>
+          <button
+            onClick={() => setMode("group")}
+            className={`px-4 py-2 text-[14px] font-bold [font-family:var(--font-oswald)] uppercase cursor-pointer transition-colors ${
+              mode === "group" ? "bg-[#00592B] text-white" : "bg-white text-[#00592B] hover:bg-gray-50"
+            }`}
+          >
+            <Layers className="h-4 w-4 inline mr-1" />
+            BY GROUP
+          </button>
+        </div>
+
+        {mode === "school" ? (
+          <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "all")}>
+            <SelectTrigger className="w-full max-w-[250px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">ALL SCHOOLS</SelectItem>
+              {schools.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Select value={selectedGroup} onValueChange={(v) => setSelectedGroup(v ?? "all")}>
+            <SelectTrigger className="w-full max-w-[250px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">ALL GROUPS</SelectItem>
+              {schoolGroups.map((g) => (
+                <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {Object.keys(grouped).length > 0 ? (
         <div className="space-y-6">
-          {Object.entries(grouped).map(([schoolName, products]) => (
-            <Card key={schoolName}>
+          {Object.entries(grouped).map(([ownerName, products]) => (
+            <Card key={ownerName}>
               <CardHeader className="pb-3">
-                <CardTitle className="text-[18px]">{schoolName}</CardTitle>
+                <CardTitle className="text-[18px]">{ownerName}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {Object.entries(products).map(([productName, priceEntries]) => (
@@ -358,36 +420,67 @@ export default function PricesPage() {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setFormMode("school")}
+                className={`flex-1 py-2 rounded-[8px] text-[14px] font-bold [font-family:var(--font-oswald)] uppercase cursor-pointer transition-colors border-2 ${
+                  formMode === "school" ? "bg-[#00592B] text-white border-[#00592B]" : "bg-white text-[#00592B] border-black"
+                }`}
+              >
+                SCHOOL
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormMode("group")}
+                className={`flex-1 py-2 rounded-[8px] text-[14px] font-bold [font-family:var(--font-oswald)] uppercase cursor-pointer transition-colors border-2 ${
+                  formMode === "group" ? "bg-[#00592B] text-white border-[#00592B]" : "bg-white text-[#00592B] border-black"
+                }`}
+              >
+                GROUP
+              </button>
+            </div>
             <div className="space-y-2">
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
-                SCHOOL
+                {formMode === "school" ? "SCHOOL" : "SCHOOL GROUP"}
               </Label>
-              <Select value={formSchool} onValueChange={(v) => setFormSchool(v ?? "")} required items={schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="SELECT SCHOOL" />
-                </SelectTrigger>
-                <SelectContent>
-                  {schools.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {formMode === "school" ? (
+                <Select value={formOwner} onValueChange={(v) => setFormOwner(v ?? "")} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="SELECT SCHOOL" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schools.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.short_code ? `${s.short_code} — ${s.name}` : s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={formOwner} onValueChange={(v) => setFormOwner(v ?? "")} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="SELECT GROUP" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schoolGroups.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 PRODUCT
               </Label>
-              <Select value={formProduct} onValueChange={(v) => setFormProduct(v ?? "")} required items={products.map((p) => ({ value: p.id, label: p.name }))}>
+              <Select value={formProduct} onValueChange={(v) => setFormProduct(v ?? "")} required>
                 <SelectTrigger>
                   <SelectValue placeholder="SELECT PRODUCT" />
                 </SelectTrigger>
                 <SelectContent>
                   {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -396,16 +489,14 @@ export default function PricesPage() {
               <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
                 SIZE (OPTIONAL FOR NON-SIZED PRODUCTS)
               </Label>
-              <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")} items={[{ value: "__none__", label: "NO SIZE" }, ...sizes.map((s) => ({ value: s.id, label: s.label }))]}>
+              <Select value={formSize} onValueChange={(v) => setFormSize(v ?? "")}>
                 <SelectTrigger>
                   <SelectValue placeholder="SELECT SIZE" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">NO SIZE</SelectItem>
                   {sizes.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.label}
-                    </SelectItem>
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -427,7 +518,7 @@ export default function PricesPage() {
             <div className="flex gap-3 justify-end">
               <Button
                 type="submit"
-                disabled={loading || !formSchool || !formProduct || !formPrice}
+                disabled={loading || !formOwner || !formProduct || !formPrice}
               >
                 <span>{loading ? "SAVING..." : editingPrice ? "UPDATE" : "ADD"}</span>
               </Button>

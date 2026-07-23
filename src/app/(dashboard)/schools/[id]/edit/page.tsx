@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Card,
   CardContent,
   CardHeader,
@@ -15,6 +22,11 @@ import {
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+
+interface SchoolGroup {
+  id: string;
+  name: string;
+}
 
 export default function EditSchoolPage() {
   const router = useRouter();
@@ -26,18 +38,25 @@ export default function EditSchoolPage() {
   const [shortCode, setShortCode] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
+  const [schoolGroupId, setSchoolGroupId] = useState("");
+  const [schoolGroups, setSchoolGroups] = useState<SchoolGroup[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("schools").select("*").eq("id", id).single();
-      if (data) {
-        setName(data.name || "");
-        setShortCode(data.short_code || "");
-        setAddress(data.address || "");
-        setPhone(data.phone || "");
+      const [schoolRes, groupsRes] = await Promise.all([
+        supabase.from("schools").select("*").eq("id", id).single(),
+        supabase.from("school_groups").select("id, name").order("sort_order"),
+      ]);
+      if (schoolRes.data) {
+        setName(schoolRes.data.name || "");
+        setShortCode(schoolRes.data.short_code || "");
+        setAddress(schoolRes.data.address || "");
+        setPhone(schoolRes.data.phone || "");
+        setSchoolGroupId(schoolRes.data.school_group_id || "");
       }
+      if (groupsRes.data) setSchoolGroups(groupsRes.data);
       setLoaded(true);
     }
     load();
@@ -54,6 +73,7 @@ export default function EditSchoolPage() {
         short_code: shortCode || null,
         address: address || null,
         phone: phone || null,
+        school_group_id: schoolGroupId || null,
       })
       .eq("id", id);
 
@@ -135,6 +155,21 @@ export default function EditSchoolPage() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                PRICING GROUP
+              </Label>
+              <Select value={schoolGroupId} onValueChange={(v) => setSchoolGroupId(v ?? "")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="SELECT GROUP (OPTIONAL)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schoolGroups.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex gap-3">
               <Button type="submit" disabled={loading}>

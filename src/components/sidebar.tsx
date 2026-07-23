@@ -66,7 +66,7 @@ export function Sidebar({
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
           onClick={onClose}
         />
       )}
@@ -75,7 +75,7 @@ export function Sidebar({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col border-r-4 border-black bg-white transition-transform duration-200",
-          "lg:translate-x-0",
+          "md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -105,7 +105,7 @@ export function Sidebar({
                   "flex items-center gap-3 rounded-[20px] px-4 py-3.5 text-[16px] font-bold uppercase transition-all [font-family:var(--font-oswald)] min-h-[48px]",
                   isActive
                     ? "bg-[#00592B] text-white shadow-[2px_2px_0_0_#000] border-2 border-black"
-                    : "text-[#00592B] hover:bg-[#E374C7] hover:text-black"
+                    : "text-[#00592B] hover:bg-[#E374C7] hover:text-black active:bg-[#E374C7] active:text-black"
                 )}
               >
                 <item.icon className="h-6 w-6" />
@@ -124,7 +124,7 @@ export function Sidebar({
         <div className="border-t-4 border-black px-4 py-4">
           <button
             onClick={handleSignOut}
-            className="flex w-full items-center gap-3 rounded-[20px] px-4 py-3 text-[16px] font-bold uppercase text-[#00592B] transition-all [font-family:var(--font-oswald)] hover:bg-[#E374C7] hover:text-black"
+            className="flex w-full items-center gap-3 rounded-[20px] px-4 py-3 text-[16px] font-bold uppercase text-[#00592B] transition-all [font-family:var(--font-oswald)] hover:bg-[#E374C7] hover:text-black active:bg-[#E374C7] active:text-black"
           >
             <LogOut className="h-6 w-6" />
             Sign Out

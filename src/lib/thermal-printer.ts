@@ -88,16 +88,26 @@ export function generateReceipt(
   shop?: ShopConfig,
   lineWidth = 48
 ): string {
+  const isNarrow = lineWidth < 40;
   let receipt = "";
 
   receipt += initPrinter();
   receipt += setCodepage();
+
+  // ── HEADER ──
   receipt += alignCenter();
   receipt += setBold(true);
-  receipt += setDoubleSize(true);
-  receipt += "BILL OF SUPPLY\n";
-  receipt += setDoubleSize(false);
-  receipt += setBold(false);
+
+  if (!isNarrow) {
+    receipt += setDoubleSize(true);
+    receipt += "BILL OF SUPPLY\n";
+    receipt += setDoubleSize(false);
+  } else {
+    receipt += setDoubleSize(true);
+    receipt += "BILL\n";
+    receipt += setDoubleSize(false);
+  }
+
   receipt += (shop?.legal_name || "NANDALAYA") + "\n";
   receipt += (shop?.shop_tagline || "SCHOOL UNIFORMS & GARMENTS") + "\n";
   if (shop?.shop_address) {
@@ -111,33 +121,40 @@ export function generateReceipt(
   }
   receipt += "-".repeat(lineWidth) + "\n";
 
+  // ── BILL INFO ──
   receipt += alignLeft();
-  receipt += `Bill: ${bill.bill_number}\n`;
+  receipt += `No: ${bill.bill_number}\n`;
 
   const date = new Date(bill.created_at);
   const dateStr = date.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
-    year: "numeric",
+    year: isNarrow ? "2-digit" : "numeric",
   });
   const timeStr = date.toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
+    hour12: true,
   });
-  receipt += `Date: ${dateStr} ${timeStr}\n`;
+  receipt += `${dateStr} ${timeStr}\n`;
 
   if (bill.customer_name) {
-    receipt += `Customer: ${bill.customer_name}\n`;
+    receipt += `${isNarrow ? "Cust: " : "Customer: "}${bill.customer_name}\n`;
   }
   if (bill.customer_phone) {
-    receipt += `Phone: ${bill.customer_phone}\n`;
+    receipt += `Ph: ${bill.customer_phone}\n`;
   }
 
   receipt += "-".repeat(lineWidth) + "\n";
 
+  // ── ITEMS ──
   receipt += setBold(true);
-  const itemW = lineWidth - 12;
-  receipt += padRight("Item", itemW) + padLeft("Qty", 4) + padLeft("Total", 8) + "\n";
+  const columns = isNarrow
+    ? { itemW: lineWidth - 8, qtyW: 3, amtW: 5 }
+    : { itemW: lineWidth - 12, qtyW: 4, amtW: 8 };
+  receipt += padRight("Item", columns.itemW)
+    + padLeft("Qty", columns.qtyW)
+    + padLeft(isNarrow ? "Amt" : "Total", columns.amtW) + "\n";
   receipt += setBold(false);
   receipt += "-".repeat(lineWidth) + "\n";
 
@@ -145,36 +162,52 @@ export function generateReceipt(
     const name = item.size_label
       ? `${item.product_name}(${item.size_label})`
       : item.product_name;
-    const truncatedName = name.length > itemW ? name.slice(0, itemW - 1) + "." : name;
+    const truncatedName = name.length > columns.itemW
+      ? name.slice(0, columns.itemW - 1) + "."
+      : name;
 
-    receipt += padRight(truncatedName, itemW);
-    receipt += padLeft(String(item.qty), 4);
-    receipt += padLeft(`\u20b9${item.subtotal}`, 8);
+    receipt += padRight(truncatedName, columns.itemW);
+    receipt += padLeft(String(item.qty), columns.qtyW);
+    receipt += padLeft(`\u20b9${item.subtotal}`, columns.amtW);
     receipt += "\n";
 
-    receipt += `  @\u20b9${item.price}`;
-    if (item.discount_amount > 0) {
-      receipt += ` (-\u20b9${item.discount_amount})`;
+    if (isNarrow) {
+      receipt += `\u20b9${item.price}`;
+      if (item.discount_amount > 0) {
+        receipt += ` -\u20b9${item.discount_amount}`;
+      }
+      receipt += "\n";
+    } else {
+      receipt += `  @\u20b9${item.price}`;
+      if (item.discount_amount > 0) {
+        receipt += ` (-\u20b9${item.discount_amount})`;
+      }
+      receipt += "\n";
     }
-    receipt += "\n";
   }
 
   receipt += "-".repeat(lineWidth) + "\n";
 
-  receipt += padRight("Subtotal:", 22) + padLeft(`\u20b9${bill.subtotal}`, 10) + "\n";
+  // ── TOTALS ──
+  const totalLabelW = isNarrow ? 14 : 22;
+  const totalValW = isNarrow ? 6 : 10;
+
+  receipt += padRight("Subtotal:", totalLabelW) + padLeft(`\u20b9${bill.subtotal}`, totalValW) + "\n";
   if (bill.discount > 0) {
-    receipt += padRight("Discount:", 22) + padLeft(`-\u20b9${bill.discount}`, 10) + "\n";
+    receipt += padRight("Discount:", totalLabelW) + padLeft(`-\u20b9${bill.discount}`, totalValW) + "\n";
   }
 
   receipt += setBold(true);
-  receipt += setDoubleSize(true);
-  receipt += padRight("TOTAL:", 22) + padLeft(`\u20b9${bill.total}`, 10) + "\n";
+  if (!isNarrow) {
+    receipt += setDoubleSize(true);
+  }
+  receipt += padRight("TOTAL:", totalLabelW) + padLeft(`\u20b9${bill.total}`, totalValW) + "\n";
   receipt += setDoubleSize(false);
   receipt += setBold(false);
 
   receipt += "-".repeat(lineWidth) + "\n";
 
-  // Payment — show breakdown if split
+  // ── PAYMENT ──
   const details = bill.payment_details;
   if (details && details.length > 1) {
     for (const p of details) {
@@ -188,22 +221,37 @@ export function generateReceipt(
     receipt += "\nNotes:\n" + bill.notes + "\n";
   }
 
+  // ── AMOUNT IN WORDS ──
   receipt += "\n";
   receipt += alignLeft();
-  receipt += "Amount in words:\n";
+  if (!isNarrow) {
+    receipt += "Amount in words:\n";
+  }
   receipt += setBold(true);
-  receipt += amountToWords(bill.total) + "\n";
+
+  if (isNarrow) {
+    receipt += `Rs. ${bill.total} `;
+    const words = amountToWords(bill.total).replace(" RUPEES ONLY", "").replace(" RUPEES AND ", " & ");
+    receipt += `(${words})\n`;
+  } else {
+    receipt += amountToWords(bill.total) + "\n";
+  }
+
   receipt += setBold(false);
 
   receipt += "-".repeat(lineWidth) + "\n";
 
+  // ── FOOTER ──
   receipt += alignCenter();
   receipt += "THANK YOU!\n";
-  receipt += "\n";
-  receipt += alignLeft();
-  receipt += "Auth. Sign: __________________\n";
-  receipt += "\n\n";
 
+  if (!isNarrow) {
+    receipt += "\n";
+    receipt += alignLeft();
+    receipt += "Auth. Sign: __________________\n";
+  }
+
+  receipt += "\n";
   receipt += cutPaper();
 
   return receipt;

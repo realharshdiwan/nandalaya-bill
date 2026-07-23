@@ -12,9 +12,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, Pencil, ShoppingCart, Minus } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, ShoppingCart, Minus, User, Check } from "lucide-react";
 import DeleteSchoolButton from "./delete-school-button";
 import { addToCart, getCart, removeFromCart, CartItem } from "@/lib/cart";
+import { toast } from "sonner";
 
 interface School {
   id: string;
@@ -62,6 +63,10 @@ export default function SchoolDetailPage() {
   const [products, setProducts] = useState<ProductGroup[]>([]);
   const [cart, setCartState] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [quickPayment, setQuickPayment] = useState("cash");
+  const [quickCustomer, setQuickCustomer] = useState("");
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [quickShowCustomer, setQuickShowCustomer] = useState(false);
 
   const loadCart = useCallback(() => {
     setCartState(getCart());
@@ -79,7 +84,7 @@ export default function SchoolDetailPage() {
     async function load() {
       const { data: schoolData } = await supabase
         .from("schools")
-        .select("id, name, short_code, address, phone")
+        .select("id, name, short_code, address, phone, school_group_id")
         .eq("id", id)
         .single();
 
@@ -89,21 +94,43 @@ export default function SchoolDetailPage() {
       }
       setSchool(schoolData);
 
-      const { data: priceList } = await supabase
-        .from("price_list")
-        .select("id, price, products(id, name, category), sizes(id, label, numeric_value)")
-        .eq("school_id", id)
-        .eq("is_active", true)
-        .order("products(name)");
+      const groupId = (schoolData as { school_group_id: string | null }).school_group_id;
 
-      const normalized = (priceList || []).map((pl: PriceListRow): NormalizedPriceRow => ({
-        ...pl,
-        products: Array.isArray(pl.products) ? pl.products[0] : pl.products,
-        sizes: Array.isArray(pl.sizes) ? pl.sizes[0] : pl.sizes,
-      }));
+      const [schoolPricesRes, groupPricesRes] = await Promise.all([
+        supabase
+          .from("price_list")
+          .select("id, price, products(id, name, category), sizes(id, label, numeric_value)")
+          .eq("school_id", id)
+          .eq("is_active", true)
+          .order("products(name)"),
+        groupId
+          ? supabase
+              .from("price_list")
+              .select("id, price, products(id, name, category), sizes(id, label, numeric_value)")
+              .eq("school_group_id", groupId)
+              .eq("is_active", true)
+              .order("products(name)")
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const normalize = (rows: any[]) =>
+        (rows || []).map((pl: PriceListRow): NormalizedPriceRow => ({
+          ...pl,
+          products: Array.isArray(pl.products) ? pl.products[0] : pl.products,
+          sizes: Array.isArray(pl.sizes) ? pl.sizes[0] : pl.sizes,
+        }));
+
+      const schoolPrices = normalize(schoolPricesRes.data || []);
+      const groupPrices = normalize(groupPricesRes.data || []);
+
+      const schoolKeys = new Set(schoolPrices.map((p) => `${p.products?.id}-${p.sizes?.id || ""}`));
+      const priceList: NormalizedPriceRow[] = [
+        ...schoolPrices,
+        ...groupPrices.filter((p) => !schoolKeys.has(`${p.products?.id}-${p.sizes?.id || ""}`)),
+      ];
 
       const productMap: Record<string, ProductGroup> = {};
-      normalized.forEach((pl) => {
+      priceList.forEach((pl) => {
         const name = pl.products?.name || "Unknown";
         if (!productMap[name]) {
           productMap[name] = {
@@ -160,6 +187,91 @@ export default function SchoolDetailPage() {
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+
+  // Load default payment method
+  useEffect(() => {
+    supabase
+      .from("shop_config")
+      .select("value")
+      .eq("key", "default_payment")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.value) setQuickPayment(data.value);
+      });
+  }, [supabase]);
+
+  async function quickSave() {
+    if (cart.length === 0) return;
+    setQuickSaving(true);
+
+    const { data: billNumber, error: bnError } = await supabase.rpc("generate_bill_number");
+    if (bnError || !billNumber) {
+      toast.error("Failed to generate bill number");
+      setQuickSaving(false);
+      return;
+    }
+
+    const subtotal = cartTotal;
+    const total = subtotal;
+
+    const { data: bill, error: billError } = await supabase
+      .from("bills")
+      .insert({
+        bill_number: billNumber,
+        customer_name: quickCustomer || null,
+        school_id: id,
+        subtotal,
+        discount: 0,
+        total,
+        payment_method: quickPayment,
+        is_paid: quickPayment !== "credit",
+        paid_at: quickPayment !== "credit" ? new Date().toISOString() : null,
+      })
+      .select("id")
+      .single();
+
+    if (billError) {
+      toast.error("Failed to create bill: " + billError.message);
+      setQuickSaving(false);
+      return;
+    }
+
+    const billItems = cart.map((item) => ({
+      bill_id: bill.id,
+      product_id: item.product_id,
+      size_id: item.size_id || null,
+      product_name: item.product_name,
+      size_label: item.size_label || null,
+      qty: item.qty,
+      price: item.price,
+      subtotal: item.qty * item.price,
+      discount_type: "none",
+      discount_value: 0,
+      discount_amount: 0,
+    }));
+
+    const { error: itemsError } = await supabase.from("bill_items").insert(billItems);
+
+    if (itemsError) {
+      await supabase.from("bills").delete().eq("id", bill.id);
+      toast.error("Failed to save items: " + itemsError.message);
+      setQuickSaving(false);
+      return;
+    }
+
+    // Decrement stock
+    for (const item of cart) {
+      await supabase.rpc("decrement_stock", { p_product_id: item.product_id, p_qty: item.qty });
+    }
+
+    // Clear cart
+    const { clearCart } = await import("@/lib/cart");
+    clearCart();
+
+    toast.success(`Bill ${billNumber} created`);
+    const billIsPaid = quickPayment !== "credit";
+    router.push(`/bills/${bill.id}${billIsPaid ? "?autoprint=true" : ""}`);
+  }
 
   if (loading) {
     return (
@@ -318,24 +430,70 @@ export default function SchoolDetailPage() {
         </div>
       )}
 
-      {/* Sticky cart bar */}
+      {/* Sticky cart bar — integrated billing */}
       {cartCount > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 lg:pl-[288px]">
-          <div className="mx-auto max-w-4xl">
-            <button
-              onClick={() => router.push(`/bills/new?school=${id}`)}
-              className="w-full flex items-center justify-between rounded-[16px] border-2 border-black bg-[#00592B] px-6 py-4 shadow-[4px_4px_0_0_#000] hover:shadow-[2px_2px_0_0_#000] hover:translate-x-[2px] hover:translate-y-[2px] transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <ShoppingCart className="h-5 w-5 text-white" />
-                <span className="text-[16px] text-white [font-family:var(--font-oswald)] uppercase font-bold">
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 md:pl-[288px]">
+          <div className="mx-auto max-w-4xl space-y-3">
+            {/* Top row: cart summary + customer */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 rounded-[12px] bg-[#00592B] border-2 border-black px-4 py-2 shadow-[3px_3px_0_0_#000]">
+                <ShoppingCart className="h-5 w-5 text-white shrink-0" />
+                <span className="text-[15px] text-white [font-family:var(--font-oswald)] uppercase font-bold whitespace-nowrap">
                   {cartCount} ITEM{cartCount !== 1 ? "S" : ""} — ₹{cartTotal}
                 </span>
               </div>
-              <span className="text-[16px] text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold">
-                CREATE BILL →
-              </span>
-            </button>
+              {quickShowCustomer ? (
+                <input
+                  value={quickCustomer}
+                  onChange={(e) => setQuickCustomer(e.target.value)}
+                  placeholder="CUSTOMER NAME"
+                  className="h-10 flex-1 min-w-[140px] rounded-[12px] border-2 border-black bg-white px-3 text-[14px] font-bold text-[#00592B] placeholder:text-[#B8AC8A] uppercase [font-family:var(--font-oswald)] outline-none"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={() => setQuickShowCustomer(true)}
+                  className="flex items-center gap-1.5 h-10 rounded-[12px] border-2 border-black bg-white px-3 text-[13px] font-bold text-[#4D8A6B] uppercase [font-family:var(--font-oswald)] hover:bg-[#E5F1EA] transition-all cursor-pointer"
+                >
+                  <User className="h-4 w-4" />
+                  CUSTOMER
+                </button>
+              )}
+            </div>
+
+            {/* Bottom row: payment buttons + save */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {(["cash", "upi", "credit"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setQuickPayment(m)}
+                  className={`rounded-[12px] border-2 px-4 py-2.5 text-[14px] font-bold uppercase [font-family:var(--font-oswald)] transition-all cursor-pointer ${
+                    quickPayment === m
+                      ? "bg-[#00592B] text-white border-black shadow-[2px_2px_0_0_#000]"
+                      : "bg-white text-[#00592B] border-black hover:bg-[#E5F1EA]"
+                  }`}
+                >
+                  {m === "cash" ? "CASH" : m === "upi" ? "UPI" : "CREDIT"}
+                </button>
+              ))}
+              <button
+                onClick={() => router.push(`/bills/new?school=${id}`)}
+                className="rounded-[12px] border-2 border-black bg-white px-3 py-2.5 text-[12px] font-bold text-[#4D8A6B] uppercase [font-family:var(--font-oswald)] hover:bg-[#E5F1EA] transition-all cursor-pointer"
+              >
+                MORE
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={quickSave}
+                disabled={quickSaving}
+                className="flex items-center gap-2 rounded-[16px] border-2 border-black bg-[#00592B] px-6 py-3 shadow-[4px_4px_0_0_#000] hover:shadow-[2px_2px_0_0_#000] hover:translate-x-[2px] hover:translate-y-[2px] transition-all cursor-pointer disabled:opacity-60"
+              >
+                <Check className="h-5 w-5 text-white" />
+                <span className="text-[16px] text-white [font-family:var(--font-oswald)] uppercase font-bold">
+                  {quickSaving ? "SAVING..." : "SAVE"}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       )}

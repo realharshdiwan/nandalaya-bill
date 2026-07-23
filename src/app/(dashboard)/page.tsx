@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, School, Package, IndianRupee, Receipt } from "lucide-react";
+import { Search, School, Package, IndianRupee, Receipt, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 
 interface SearchResult {
@@ -195,16 +195,29 @@ export default function HomePage() {
 
       {/* Quick actions when no search */}
       {!query && (
-        <div className="grid gap-8 sm:grid-cols-2">
-          <Link href="/bills/new">
-            <Card className="cursor-pointer transition-all hover:shadow-[10px_10px_0_0_#000] hover:translate-x-[-2px] hover:translate-y-[-2px] border-[#E374C7]">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <Link href="/schools">
+            <Card className="cursor-pointer transition-all hover:shadow-[10px_10px_0_0_#000] hover:translate-x-[-2px] hover:translate-y-[-2px] border-[#E374C7] bg-[#00592B]">
               <CardHeader className="pb-2">
-                <Receipt className="h-10 w-10 text-[#E374C7]" />
+                <ShoppingCart className="h-10 w-10 text-[#E374C7]" />
+              </CardHeader>
+              <CardContent>
+                <CardTitle className="text-[24px] text-white">Quick Bill</CardTitle>
+                <p className="text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
+                  Pick a school & bill instantly
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/bills/new">
+            <Card className="cursor-pointer transition-all hover:shadow-[10px_10px_0_0_#000] hover:translate-x-[-2px] hover:translate-y-[-2px]">
+              <CardHeader className="pb-2">
+                <Receipt className="h-10 w-10 text-[#00592B]" />
               </CardHeader>
               <CardContent>
                 <CardTitle className="text-[24px]">New Bill</CardTitle>
                 <p className="text-[14px] text-[#003F1E] [font-family:var(--font-oswald)] uppercase">
-                  Create a new invoice
+                  Full billing with discounts & splits
                 </p>
               </CardContent>
             </Card>

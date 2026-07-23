@@ -27,16 +27,16 @@ interface Product {
   size_group_id: string | null;
 }
 
-interface SizeGroup {
-  id: string;
-  name: string;
-  sizes: Size[];
-}
-
 interface Size {
   id: string;
   label: string;
   numeric_value: number | null;
+}
+
+interface SizeGroup {
+  id: string;
+  name: string;
+  sizes: Size[];
 }
 
 export default function BulkPricePage() {
@@ -47,13 +47,9 @@ export default function BulkPricePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [sizeGroups, setSizeGroups] = useState<SizeGroup[]>([]);
   const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
-  // matrix[productId][sizeId|"__no_size__"] = price string
   const [matrix, setMatrix] = useState<Record<string, Record<string, string>>>({});
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
-
-  // Flat list of all sizes across all groups (for matrix key iteration)
-  const allSizes = sizeGroups.flatMap((g) => g.sizes);
 
   useEffect(() => {
     async function load() {
@@ -82,8 +78,6 @@ export default function BulkPricePage() {
     load();
   }, [supabase]);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
-  // Load prices from the first selected school as template
   useEffect(() => {
     if (selectedSchools.length === 0) {
       setMatrix({});
@@ -98,27 +92,29 @@ export default function BulkPricePage() {
         .eq("is_active", true);
 
       const prices = data || [];
-
       const m: Record<string, Record<string, string>> = {};
+
       products.forEach((p) => {
         m[p.id] = {};
-        allSizes.forEach((s) => {
-          const existing = prices.find(
-            (ep) => ep.product_id === p.id && ep.size_id === s.id
-          );
-          m[p.id][s.id] = existing ? String(existing.price) : "";
-        });
-        // NO SIZE column
+        const group = sizeGroups.find((g) => g.id === p.size_group_id);
+        if (group) {
+          group.sizes.forEach((s) => {
+            const existing = prices.find(
+              (ep) => ep.product_id === p.id && ep.size_id === s.id
+            );
+            m[p.id][s.id] = existing ? String(existing.price) : "";
+          });
+        }
         const noSizeExisting = prices.find(
           (ep) => ep.product_id === p.id && ep.size_id === null
         );
         m[p.id]["__no_size__"] = noSizeExisting ? String(noSizeExisting.price) : "";
       });
+
       setMatrix(m);
     }
     loadPrices();
-  }, [selectedSchools, products, allSizes, supabase]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }, [selectedSchools, products, sizeGroups, supabase]);
 
   function toggleSchool(schoolId: string) {
     setSelectedSchools((prev) =>
@@ -155,7 +151,6 @@ export default function BulkPricePage() {
     setLoading(true);
 
     try {
-      // Collect all cells that need to be saved (non-empty, positive price)
       type PriceRow = {
         school_id: string;
         product_id: string;
@@ -166,11 +161,14 @@ export default function BulkPricePage() {
 
       for (const schoolId of selectedSchools) {
         for (const product of products) {
-          for (const size of allSizes) {
-            const value = matrix[product.id]?.[size.id];
-            const price = value ? parseFloat(value) : null;
-            if (price !== null && price > 0) {
-              rows.push({ school_id: schoolId, product_id: product.id, size_id: size.id, price });
+          const group = sizeGroups.find((g) => g.id === product.size_group_id);
+          if (group) {
+            for (const size of group.sizes) {
+              const value = matrix[product.id]?.[size.id];
+              const price = value ? parseFloat(value) : null;
+              if (price !== null && price > 0) {
+                rows.push({ school_id: schoolId, product_id: product.id, size_id: size.id, price });
+              }
             }
           }
           const noSizeValue = matrix[product.id]?.["__no_size__"];
@@ -187,8 +185,7 @@ export default function BulkPricePage() {
         return;
       }
 
-      // Batch 1: Get ALL existing prices for each school (active or not)
-      const existingMap = new Map<string, string>(); // key: "schoolId|productId|sizeId|null" → price_list.id
+      const existingMap = new Map<string, string>();
       await Promise.all(
         selectedSchools.map(async (schoolId) => {
           const { data } = await supabase
@@ -204,7 +201,6 @@ export default function BulkPricePage() {
         })
       );
 
-      // Batch 2: Split into inserts and updates
       const inserts: PriceRow[] = [];
       const updates: { id: string; price: number }[] = [];
 
@@ -218,7 +214,6 @@ export default function BulkPricePage() {
         }
       }
 
-      // Batch 3: Run all DB writes in parallel
       let saved = 0;
 
       const updateResults = await Promise.all(
@@ -254,11 +249,18 @@ export default function BulkPricePage() {
     return count + Object.values(row).filter((v) => v && parseFloat(v) > 0).length;
   }, 0);
 
-  const totalCells = products.length * (allSizes.length + 1); // +1 for NO SIZE column
+  const totalCells = products.reduce((sum, p) => {
+    const group = sizeGroups.find((g) => g.id === p.size_group_id);
+    return sum + (group ? group.sizes.length : 0) + 1;
+  }, 0);
 
-  // Find which size groups are used by the current products
-  const activeGroupIds = [...new Set(products.map((p) => p.size_group_id).filter(Boolean))] as string[];
-  const activeGroups = sizeGroups.filter((g) => activeGroupIds.includes(g.id));
+  // Group products by size group
+  const groupedProducts = products.reduce<Record<string, Product[]>>((acc, p) => {
+    const key = p.size_group_id || "__no_group__";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(p);
+    return acc;
+  }, {});
 
   if (!loaded) {
     return (
@@ -286,7 +288,6 @@ export default function BulkPricePage() {
         </div>
       </div>
 
-      {/* School multi-select */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -346,75 +347,119 @@ export default function BulkPricePage() {
             </Button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-[14px] border-collapse">
-              <thead>
-                {/* Group headers row */}
-                <tr>
-                  <th className="text-left pb-1 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold bg-[#00592B] sticky left-0 z-10" colSpan={1}>
-                  </th>
-                  {activeGroups.map((group) => (
-                    <th key={group.id} className="text-center pb-1 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold border-b border-[#E374C7]/30" colSpan={group.sizes.length}>
-                      {group.name}
-                    </th>
-                  ))}
-                  <th className="text-center pb-1 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold border-l-2 border-[#4D8A6B]" colSpan={1}>
-                  </th>
-                </tr>
-                {/* Size labels row */}
-                <tr>
-                  <th className="text-left pb-3 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold bg-[#00592B] sticky left-0 z-10">
-                    PRODUCT
-                  </th>
-                  {activeGroups.map((group) =>
-                    group.sizes.map((size) => (
-                      <th key={size.id} className="text-center pb-3 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold min-w-[80px]">
-                        {size.label}
+          {/* Products without a size group */}
+          {groupedProducts["__no_group__"] && (
+            <Card>
+              <CardHeader className="pb-2 bg-[#0023D1] rounded-t-[12px]">
+                <CardTitle className="text-[15px] text-white [font-family:var(--font-oswald)] uppercase tracking-wider">
+                  NO SIZE GROUP
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <table className="w-full text-[14px] border-collapse">
+                  <thead>
+                    <tr className="bg-[#00592B]">
+                      <th className="text-left px-4 py-3 text-white/70 [font-family:var(--font-oswald)] uppercase font-bold text-[13px]">
+                        PRODUCT
                       </th>
-                    ))
-                  )}
-                  <th className="text-center pb-3 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold min-w-[100px] border-l-2 border-[#4D8A6B]">
-                    NO SIZE
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr key={product.id}>
-                    <td className="py-2 pr-4 font-bold text-white [font-family:var(--font-oswald)] uppercase sticky left-0 bg-[#00592B] z-10">
-                      {product.name}
-                    </td>
-                    {activeGroups.map((group) =>
-                      group.sizes.map((size) => (
-                        <td key={size.id} className="py-2 px-1">
+                      <th className="text-center px-4 py-3 text-white/70 [font-family:var(--font-oswald)] uppercase font-bold text-[13px] w-[140px]">
+                        PRICE
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupedProducts["__no_group__"].map((product) => (
+                      <tr key={product.id} className="border-b border-[#4D8A6B]/20">
+                        <td className="px-4 py-3 font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+                          {product.name}
+                        </td>
+                        <td className="px-2 py-2">
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
-                            placeholder="₹"
-                            value={matrix[product.id]?.[size.id] || ""}
-                            onChange={(e) => updateCell(product.id, size.id, e.target.value)}
+                            placeholder="₹ 0"
+                            value={matrix[product.id]?.["__no_size__"] || ""}
+                            onChange={(e) => updateCell(product.id, "__no_size__", e.target.value)}
                             className="w-full text-center h-11 text-[14px]"
                           />
                         </td>
-                      ))
-                    )}
-                    <td className="py-2 px-1 border-l-2 border-[#4D8A6B]">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="₹"
-                        value={matrix[product.id]?.["__no_size__"] || ""}
-                        onChange={(e) => updateCell(product.id, "__no_size__", e.target.value)}
-                        className="w-full text-center h-11 text-[14px] border-[#E374C7]"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Products grouped by size group */}
+          {Object.entries(groupedProducts)
+            .filter(([key]) => key !== "__no_group__")
+            .map(([groupId, groupProducts]) => {
+              const group = sizeGroups.find((g) => g.id === groupId);
+              if (!group || group.sizes.length === 0) return null;
+              return (
+                <Card key={groupId}>
+                  <CardHeader className="pb-2 bg-[#0023D1] rounded-t-[12px]">
+                    <CardTitle className="text-[15px] text-white [font-family:var(--font-oswald)] uppercase tracking-wider">
+                      {group.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0 overflow-x-auto">
+                    <table className="w-full text-[14px] border-collapse">
+                      <thead>
+                        <tr className="bg-[#00592B]">
+                          <th className="text-left px-4 py-3 text-white/70 [font-family:var(--font-oswald)] uppercase font-bold text-[13px] sticky left-0 bg-[#00592B] z-10">
+                            PRODUCT
+                          </th>
+                          {group.sizes.map((size) => (
+                            <th key={size.id} className="text-center px-3 py-3 text-white/70 [font-family:var(--font-oswald)] uppercase font-bold text-[13px] min-w-[76px]">
+                              {size.label}
+                            </th>
+                          ))}
+                          <th className="text-center px-3 py-3 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold text-[13px] min-w-[90px] border-l-2 border-[#4D8A6B]/40">
+                            NO SIZE
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupProducts.map((product) => (
+                          <tr key={product.id} className="border-b border-[#4D8A6B]/20">
+                            <td className="px-4 py-3 font-bold text-[#00592B] bg-white [font-family:var(--font-oswald)] uppercase sticky left-0 z-10 whitespace-nowrap">
+                              {product.name}
+                            </td>
+                            {group.sizes.map((size) => (
+                              <td key={size.id} className="px-1 py-2">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  placeholder="₹"
+                                  value={matrix[product.id]?.[size.id] || ""}
+                                  onChange={(e) => updateCell(product.id, size.id, e.target.value)}
+                                  className="w-full text-center h-11 text-[14px]"
+                                />
+                              </td>
+                            ))}
+                            <td className="px-1 py-2 border-l-2 border-[#4D8A6B]/40">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="₹"
+                                value={matrix[product.id]?.["__no_size__"] || ""}
+                                onChange={(e) => updateCell(product.id, "__no_size__", e.target.value)}
+                                className="w-full text-center h-11 text-[14px] border-[#E374C7]"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+              );
+            })}
         </>
       )}
 

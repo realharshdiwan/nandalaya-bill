@@ -35,7 +35,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Mobile header */}
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b-4 border-black bg-[#00592B] px-4 lg:hidden">
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b-4 border-black bg-[#00592B] px-4 md:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
           className="flex h-11 w-11 items-center justify-center rounded-[12px] border-2 border-black bg-white text-[#00592B]"
@@ -52,7 +52,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="lg:pl-[288px]">
+      <main className="md:pl-[288px]">
         <div className="mx-auto max-w-[1280px] px-4 py-4 lg:px-8 lg:py-8">
           {children}
         </div>

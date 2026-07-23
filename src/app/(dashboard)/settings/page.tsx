@@ -35,6 +35,12 @@ interface SizeGroup {
   sizes: Size[];
 }
 
+interface SchoolGroup {
+  id: string;
+  name: string;
+  sort_order: number;
+}
+
 interface TeamMember {
   id: string;
   display_name: string | null;
@@ -72,6 +78,13 @@ export default function SettingsPage() {
   const [deleteSizeTarget, setDeleteSizeTarget] = useState<{ size: Size; groupName: string } | null>(null);
   const [deleteSizeLoading, setDeleteSizeLoading] = useState(false);
   const [deleteSizePriceCount, setDeleteSizePriceCount] = useState(0);
+
+  // School groups
+  const [schoolGroups, setSchoolGroups] = useState<SchoolGroup[]>([]);
+  const [newSchoolGroupName, setNewSchoolGroupName] = useState("");
+  const [addingSchoolGroup, setAddingSchoolGroup] = useState(false);
+  const [editingSchoolGroup, setEditingSchoolGroup] = useState<string | null>(null);
+  const [editSchoolGroupName, setEditSchoolGroupName] = useState("");
 
   // Other settings
   const [upiId, setUpiId] = useState("");
@@ -112,6 +125,63 @@ export default function SettingsPage() {
       sizes: itemsByGroup[g.id] || [],
     })));
   }, [supabase]);
+
+  const loadSchoolGroups = useCallback(async () => {
+    const { data } = await supabase
+      .from("school_groups")
+      .select("id, name, sort_order")
+      .order("sort_order");
+    if (data) setSchoolGroups(data);
+  }, [supabase]);
+
+  async function handleAddSchoolGroup(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newSchoolGroupName.trim()) return;
+    setAddingSchoolGroup(true);
+    const nextOrder = schoolGroups.length > 0
+      ? Math.max(...schoolGroups.map(g => g.sort_order)) + 1
+      : 1;
+    const { error } = await supabase.from("school_groups").insert({
+      name: newSchoolGroupName.trim(),
+      sort_order: nextOrder,
+    });
+    if (error) {
+      toast.error("Failed to create school group: " + error.message);
+    } else {
+      toast.success("School group created");
+      setNewSchoolGroupName("");
+      await loadSchoolGroups();
+    }
+    setAddingSchoolGroup(false);
+  }
+
+  async function handleRenameSchoolGroup(id: string) {
+    if (!editSchoolGroupName.trim()) return;
+    const { error } = await supabase
+      .from("school_groups")
+      .update({ name: editSchoolGroupName.trim() })
+      .eq("id", id);
+    if (error) {
+      toast.error("Failed to rename: " + error.message);
+    } else {
+      toast.success("School group renamed");
+      setEditingSchoolGroup(null);
+      await loadSchoolGroups();
+    }
+  }
+
+  async function handleDeleteSchoolGroup(id: string) {
+    const { error } = await supabase
+      .from("school_groups")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      toast.error("Failed to delete: " + error.message);
+    } else {
+      toast.success("School group deleted");
+      await loadSchoolGroups();
+    }
+  }
 
   async function loadUpi() {
     const { data } = await supabase
@@ -377,6 +447,7 @@ export default function SettingsPage() {
   /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
   useEffect(() => {
     loadGroups();
+    loadSchoolGroups();
     loadUpi();
     loadTeam();
     loadShop();
@@ -575,6 +646,81 @@ export default function SettingsPage() {
           <p className="text-[12px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase">
             Set your UPI VPA to generate QR codes on bills for exact-amount payments
           </p>
+        </CardContent>
+      </Card>
+
+      {/* ── SCHOOL GROUPS ── */}
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle>
+            <Settings className="h-5 w-5 inline mr-2" />
+            SCHOOL GROUPS
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+            Standard / Premium / Select pricing tiers
+          </p>
+          <form onSubmit={handleAddSchoolGroup} className="flex gap-2">
+            <Input
+              placeholder="NEW GROUP NAME (E.G. STANDARD, PREMIUM)"
+              value={newSchoolGroupName}
+              onChange={(e) => setNewSchoolGroupName(e.target.value)}
+              required
+              className="flex-1"
+            />
+            <Button type="submit" size="icon" className="shrink-0" disabled={addingSchoolGroup || !newSchoolGroupName.trim()}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </form>
+
+          {schoolGroups.length === 0 ? (
+            <p className="text-center py-6 text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+              NO GROUPS YET
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {schoolGroups.map((group) => (
+                <div
+                  key={group.id}
+                  className="flex items-center justify-between rounded-[12px] border-2 border-black px-3 py-2.5"
+                >
+                  {editingSchoolGroup === group.id ? (
+                    <form
+                      onSubmit={(e) => { e.preventDefault(); handleRenameSchoolGroup(group.id); }}
+                      className="flex items-center gap-2 flex-1"
+                    >
+                      <Input
+                        autoFocus
+                        value={editSchoolGroupName}
+                        onChange={(e) => setEditSchoolGroupName(e.target.value)}
+                        onBlur={() => handleRenameSchoolGroup(group.id)}
+                        className="flex-1 h-9"
+                      />
+                    </form>
+                  ) : (
+                    <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase text-[15px]">
+                      {group.name}
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => { setEditingSchoolGroup(group.id); setEditSchoolGroupName(group.name); }}
+                      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#00592B] hover:bg-[#00592B] hover:text-white cursor-pointer"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSchoolGroup(group.id)}
+                      className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[#00592B] hover:text-[#C42424] hover:bg-red-50 cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

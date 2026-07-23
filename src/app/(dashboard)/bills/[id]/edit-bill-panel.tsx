@@ -124,13 +124,21 @@ export default function EditBillPanel({
 
   useEffect(() => {
     async function load() {
-      const [productsRes, pricesRes] = await Promise.all([
+      const [productsRes, pricesRes, schoolRes] = await Promise.all([
         supabase.from("products").select("id, name, sort_order, size_group_id").order("sort_order").order("name"),
         bill.school_id
           ? supabase.from("price_list").select("product_id, price, sizes(id, label)").eq("school_id", bill.school_id).eq("is_active", true)
           : Promise.resolve({ data: [] }),
+        bill.school_id
+          ? supabase.from("schools").select("school_group_id").eq("id", bill.school_id).single()
+          : Promise.resolve({ data: null }),
       ]);
       setProducts(productsRes.data || []);
+
+      const groupId = (schoolRes.data as { school_group_id: string | null } | null)?.school_group_id;
+      const groupPricesRes = groupId
+        ? await supabase.from("price_list").select("product_id, price, sizes(id, label)").eq("school_group_id", groupId).eq("is_active", true)
+        : { data: [] };
 
       interface RawPriceListRow {
         product_id: string;
@@ -138,12 +146,22 @@ export default function EditBillPanel({
         sizes: { id: string; label: string }[] | { id: string; label: string } | null;
       }
 
-      const normalized = (pricesRes.data || []).map((row: RawPriceListRow) => ({
-        product_id: row.product_id,
-        price: row.price,
-        sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
-      }));
-      setSchoolPrices(normalized);
+      const normalize = (rows: any[]) =>
+        (rows || []).map((row: RawPriceListRow) => ({
+          product_id: row.product_id,
+          price: row.price,
+          sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
+        }));
+
+      const schoolPrices = normalize(pricesRes.data || []);
+      const groupPrices = normalize(groupPricesRes.data || []);
+
+      const schoolKeys = new Set(schoolPrices.map((p: any) => `${p.product_id}-${p.sizes?.id || ""}`));
+      const merged = [
+        ...schoolPrices,
+        ...groupPrices.filter((gp: any) => !schoolKeys.has(`${gp.product_id}-${gp.sizes?.id || ""}`)),
+      ];
+      setSchoolPrices(merged);
 
       // Convert existing items to BillItem format
       const converted: BillItem[] = existingItems.map((ei) => ({

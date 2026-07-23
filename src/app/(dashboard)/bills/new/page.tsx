@@ -75,6 +75,7 @@ export default function NewBillPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentDefaultLoaded, setPaymentDefaultLoaded] = useState(false);
   const [splitCash, setSplitCash] = useState("");
   const [splitUpi, setSplitUpi] = useState("");
   const [splitCredit, setSplitCredit] = useState("");
@@ -91,6 +92,7 @@ export default function NewBillPage() {
   const [addPrice, setAddPrice] = useState("");
   const [addDiscountType, setAddDiscountType] = useState<"none" | "flat" | "percent">("none");
   const [addDiscountValue, setAddDiscountValue] = useState("0");
+  const [showItemDiscount, setShowItemDiscount] = useState(false);
 
   const loadSizesForProduct = useCallback(async (productId: string) => {
     if (!productId) { setSizes([]); return; }
@@ -122,8 +124,18 @@ export default function NewBillPage() {
       const params = new URLSearchParams(window.location.search);
       const schoolParam = params.get("school");
 
+      // Load default payment method from shop config
+      const { data: config } = await supabase
+        .from("shop_config")
+        .select("value")
+        .eq("key", "default_payment")
+        .maybeSingle();
+      if (config?.value) {
+        setPaymentMethod(config.value);
+      }
+      setPaymentDefaultLoaded(true);
+
       if (cartItems.length > 0 && schoolParam) {
-        // Auto-select school
         setSelectedSchool(schoolParam);
 
         // Convert CartItems → BillItems
@@ -161,11 +173,29 @@ export default function NewBillPage() {
       setSchoolPrices([]);
       return;
     }
-    const { data } = await supabase
-      .from("price_list")
-      .select("product_id, price, sizes(id, label)")
-      .eq("school_id", schoolId)
-      .eq("is_active", true);
+
+    const { data: school } = await supabase
+      .from("schools")
+      .select("school_group_id")
+      .eq("id", schoolId)
+      .single();
+
+    const groupId = (school as { school_group_id: string | null } | null)?.school_group_id;
+
+    const [schoolPricesRes, groupPricesRes] = await Promise.all([
+      supabase
+        .from("price_list")
+        .select("product_id, price, sizes(id, label)")
+        .eq("school_id", schoolId)
+        .eq("is_active", true),
+      groupId
+        ? supabase
+            .from("price_list")
+            .select("product_id, price, sizes(id, label)")
+            .eq("school_group_id", groupId)
+            .eq("is_active", true)
+        : Promise.resolve({ data: [] }),
+    ]);
 
     interface RawPriceListRow {
       product_id: string;
@@ -173,12 +203,26 @@ export default function NewBillPage() {
       sizes: { id: string; label: string }[] | { id: string; label: string } | null;
     }
 
-    const normalized = (data || []).map((row: RawPriceListRow) => ({
-      product_id: row.product_id,
-      price: row.price,
-      sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
-    }));
-    setSchoolPrices(normalized);
+    const normalize = (rows: any[]) =>
+      (rows || []).map((row: RawPriceListRow) => ({
+        product_id: row.product_id,
+        price: row.price,
+        sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
+      }));
+
+    const schoolPrices = normalize(schoolPricesRes.data || []);
+    const groupPrices = normalize(groupPricesRes.data || []);
+
+    const merged = [...schoolPrices];
+    const schoolKeys = new Set(schoolPrices.map((p: any) => `${p.product_id}-${p.sizes?.id || ""}`));
+    for (const gp of groupPrices) {
+      const key = `${gp.product_id}-${gp.sizes?.id || ""}`;
+      if (!schoolKeys.has(key)) {
+        merged.push(gp);
+      }
+    }
+
+    setSchoolPrices(merged);
   }, [supabase]);
 
   useEffect(() => {
@@ -476,27 +520,38 @@ export default function NewBillPage() {
                   <Input type="number" min="0" step="0.01" value={addPrice} onChange={(e) => setAddPrice(e.target.value)} placeholder="₹ PRICE" />
                 </div>
               </div>
-              {/* Discount row — compact, inline */}
               <div className="flex items-end gap-2">
-                <div className="w-32">
-                  <Select value={addDiscountType} onValueChange={(v) => setAddDiscountType((v as "none" | "flat" | "percent") ?? "none")} items={[{ value: "none", label: "NO DISCOUNT" }, { value: "flat", label: "₹ OFF" }, { value: "percent", label: "% OFF" }]}>
-                    <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">NO DISCOUNT</SelectItem>
-                      <SelectItem value="flat">₹ OFF</SelectItem>
-                      <SelectItem value="percent">% OFF</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {addDiscountType !== "none" && (
-                  <Input
-                    type="number" min="0" step="0.01"
-                    value={addDiscountValue}
-                    onChange={(e) => setAddDiscountValue(e.target.value)}
-                    placeholder={addDiscountType === "flat" ? "₹" : "%"}
-                    className="h-9 w-24 text-[13px]"
-                  />
+                {showItemDiscount && (
+                  <>
+                    <div className="w-32">
+                      <Select value={addDiscountType} onValueChange={(v) => setAddDiscountType((v as "none" | "flat" | "percent") ?? "none")} items={[{ value: "none", label: "NO DISCOUNT" }, { value: "flat", label: "₹ OFF" }, { value: "percent", label: "% OFF" }]}>
+                        <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">NO DISCOUNT</SelectItem>
+                          <SelectItem value="flat">₹ OFF</SelectItem>
+                          <SelectItem value="percent">% OFF</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {addDiscountType !== "none" && (
+                      <Input
+                        type="number" min="0" step="0.01"
+                        value={addDiscountValue}
+                        onChange={(e) => setAddDiscountValue(e.target.value)}
+                        placeholder={addDiscountType === "flat" ? "₹" : "%"}
+                        className="h-9 w-24 text-[13px]"
+                      />
+                    )}
+                  </>
                 )}
+                <Button
+                  onClick={() => setShowItemDiscount(!showItemDiscount)}
+                  variant="tertiary"
+                  size="xs"
+                  className="text-[11px]"
+                >
+                  {showItemDiscount ? "HIDE DISC" : "DISC"}
+                </Button>
                 <Button onClick={addItem} disabled={!addProductId} size="sm">
                   <Plus className="mr-1 h-4 w-4" />
                   <span>ADD</span>
@@ -559,6 +614,13 @@ export default function NewBillPage() {
               <p className="text-[14px] [font-family:var(--font-oswald)] uppercase font-bold">ADD ITEMS TO START</p>
             </div>
           )}
+
+          {/* Save button on left column */}
+          {items.length > 0 && (
+            <Button onClick={handleSave} className="w-full h-12 text-[16px] md:hidden" disabled={loading}>
+              <span>{loading ? "SAVING..." : `SAVE BILL — ₹${total.toFixed(2)}`}</span>
+            </Button>
+          )}
         </div>
 
         {/* Right column — payment and summary */}
@@ -591,20 +653,25 @@ export default function NewBillPage() {
             </Card>
           )}
 
-          {/* Payment — always visible */}
+          {/* Payment — big buttons */}
           <Card>
             <CardContent className="p-4 space-y-3">
               <Label className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PAYMENT</Label>
-              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "cash")} items={[{ value: "cash", label: "CASH" }, { value: "upi", label: "UPI" }, { value: "card", label: "CARD" }, { value: "credit", label: "CREDIT" }, { value: "split", label: "SPLIT" }]}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">CASH</SelectItem>
-                  <SelectItem value="upi">UPI</SelectItem>
-                  <SelectItem value="card">CARD</SelectItem>
-                  <SelectItem value="credit">CREDIT</SelectItem>
-                  <SelectItem value="split">SPLIT (CASH + UPI + CREDIT)</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-3 gap-2">
+                {(["cash", "upi", "card", "credit", "split"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setPaymentMethod(m)}
+                    className={`rounded-[12px] border-2 px-3 py-2.5 text-[14px] font-bold uppercase [font-family:var(--font-oswald)] transition-all cursor-pointer ${
+                      paymentMethod === m
+                        ? "bg-[#00592B] text-white border-[#00592B] shadow-[2px_2px_0_0_#000]"
+                        : "bg-white text-[#00592B] border-black hover:bg-[#E5F1EA]"
+                    }`}
+                  >
+                    {m === "cash" ? "CASH" : m === "upi" ? "UPI" : m === "card" ? "CARD" : m === "credit" ? "CREDIT" : "SPLIT"}
+                  </button>
+                ))}
+              </div>
 
               {paymentMethod === "split" && (
                 <div className="space-y-2 rounded-[12px] border-2 border-[#E374C7] bg-pink-50 p-3">
