@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Menu, ShoppingCart } from "lucide-react";
 import { getCartCount, getCartTotal } from "@/lib/cart";
@@ -9,6 +9,7 @@ import { getCartCount, getCartTotal } from "@/lib/cart";
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const [cartCount, setCartCount] = useState(0);
   const [cartTotal, setCartTotal] = useState(0);
 
@@ -57,8 +58,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      {/* Floating cart pill */}
-      {cartCount > 0 && (
+      {/* Floating cart pill — hidden on school detail pages (they have their own sticky bar) */}
+      {cartCount > 0 && !pathname.startsWith("/schools/") && (
         <button
           onClick={handleCartClick}
           className="fixed bottom-6 right-6 z-[60] flex items-center gap-2.5 rounded-full border-2 border-black bg-[#00592B] px-4 py-2.5 shadow-[3px_3px_0_0_#000] hover:shadow-[1px_1px_0_0_#000] hover:translate-x-[2px] hover:translate-y-[2px] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer lg:bottom-8 lg:right-8"

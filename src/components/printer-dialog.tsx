@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,9 @@ import {
   isPrinterConnected,
   connectToPrinter,
   disconnectPrinter,
+  tryReconnect,
+  getStoredLineWidth,
+  setStoredLineWidth,
 } from "@/lib/thermal-printer";
 
 interface Props {
@@ -25,8 +28,19 @@ export default function PrinterDialog({ open, onOpenChange }: Props) {
   const [printerName, setPrinterName] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [paperWidth, setPaperWidth] = useState(getStoredLineWidth());
 
   const connected = open ? isPrinterConnected() : false;
+
+  useEffect(() => {
+    if (!open) return;
+
+    if (!isPrinterConnected()) {
+      tryReconnect((msg) => setStatus(msg)).then((ok) => {
+        if (ok) setStatus("Auto-reconnected!");
+      });
+    }
+  }, [open]);
 
   async function handleConnect() {
     setLoading(true);
@@ -36,6 +50,7 @@ export default function PrinterDialog({ open, onOpenChange }: Props) {
 
     if (ok) {
       toast.success("Printer connected!");
+      setPrinterName("");
     }
     setLoading(false);
   }
@@ -45,6 +60,12 @@ export default function PrinterDialog({ open, onOpenChange }: Props) {
     setPrinterName("");
     setStatus("Disconnected");
     toast.info("Printer disconnected");
+  }
+
+  function handleWidthChange(width: number) {
+    setPaperWidth(width);
+    setStoredLineWidth(width);
+    toast.success(`Paper width set to ${width === 32 ? "58mm" : "80mm"}`);
   }
 
   return (
@@ -62,7 +83,7 @@ export default function PrinterDialog({ open, onOpenChange }: Props) {
             {connected ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#00592B] px-3 py-1 text-[12px] font-bold text-white [font-family:var(--font-oswald)] uppercase">
                 <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-                CONNECTED{printerName ? ` — ${printerName}` : ""}
+                CONNECTED{printerName ? ` \u2014 ${printerName}` : ""}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#C42424] px-3 py-1 text-[12px] font-bold text-white [font-family:var(--font-oswald)] uppercase">
@@ -95,6 +116,28 @@ export default function PrinterDialog({ open, onOpenChange }: Props) {
             </Button>
           </div>
 
+          <div className="flex items-center gap-3">
+            <span className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+              PAPER WIDTH:
+            </span>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant={paperWidth === 32 ? "default" : "ghost"}
+                onClick={() => handleWidthChange(32)}
+              >
+                58mm
+              </Button>
+              <Button
+                size="sm"
+                variant={paperWidth === 48 ? "default" : "ghost"}
+                onClick={() => handleWidthChange(48)}
+              >
+                80mm
+              </Button>
+            </div>
+          </div>
+
           <div className="rounded-[12px] border-2 border-black bg-[#E5F1EA] p-3 space-y-2">
             <p className="text-[12px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">
               HOW TO CONNECT:
@@ -106,7 +149,7 @@ export default function PrinterDialog({ open, onOpenChange }: Props) {
               <li>Select your printer from the browser popup</li>
             </ol>
             <p className="text-[11px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase">
-              Works with ESC/POS printers (80mm or 58mm). Supported on Chrome/Edge.
+              Works with ESC/POS printers. Auto-reconnects to previously paired printers. Supported on Chrome/Edge.
             </p>
           </div>
         </div>

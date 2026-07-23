@@ -8,13 +8,56 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
 import QRCode from "qrcode";
+import { amountToWords } from "@/lib/amount-to-words";
 import VoidBillButton from "./void-bill-button";
 import PrintButton from "./print-button";
 import MarkPaidButton from "./mark-paid-button";
 import EditBillButton from "./edit-bill-button";
 import ThermalPrintButton from "./thermal-print-button";
+import AutoPrintHandler from "@/components/auto-print-handler";
 
 export const dynamic = "force-dynamic";
+
+interface BillWithRelations {
+  id: string;
+  bill_number: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  school_id: string | null;
+  subtotal: number;
+  discount: number;
+  total: number;
+  payment_method: string;
+  payment_details: PaymentDetail[] | null;
+  notes: string | null;
+  is_paid: boolean;
+  status: string;
+  created_at: string;
+  voided_at: string | null;
+  schools: { name: string; short_code: string | null }[] | { name: string; short_code: string | null };
+}
+
+interface PaymentDetail {
+  method: string;
+  amount: number;
+}
+
+interface BillItemWithProduct {
+  id: string;
+  bill_id: string;
+  product_id: string;
+  product_name: string;
+  size_id: string | null;
+  size_label: string | null;
+  qty: number;
+  price: number;
+  subtotal: number;
+  discount_type: string;
+  discount_value: number;
+  discount_amount: number;
+  created_at: string;
+  products: { hsn_code: string | null } | null;
+}
 
 export default async function BillDetailPage({
   params,
@@ -42,16 +85,22 @@ export default async function BillDetailPage({
   const { data: shopRows } = await supabase.from("shop_config").select("key, value");
   const shopMap = Object.fromEntries((shopRows || []).map((r) => [r.key, r.value]));
 
-  const school = Array.isArray(bill.schools) ? bill.schools[0] : bill.schools;
-  const isVoided = bill.status === "voided";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hasItemDiscounts = items?.some((item: any) => item.discount_amount > 0);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hasHsn = items?.some((item: any) => item.products?.hsn_code);
+  const typedBill = bill as BillWithRelations;
+  const normalizedItems = (items || []).map((item) => ({
+    ...item,
+    products: Array.isArray(item.products) ? item.products[0] : item.products,
+  })) as BillItemWithProduct[];
+  const typedItems = normalizedItems;
+  const school = Array.isArray(typedBill.schools) ? typedBill.schools[0] : typedBill.schools;
+  const isVoided = typedBill.status === "voided";
+  const hasItemDiscounts = typedItems.some((item) => item.discount_amount > 0);
+  const hasHsn = typedItems.some((item) => {
+    const products = item.products;
+    const product = Array.isArray(products) ? products[0] : products;
+    return product?.hsn_code;
+  });
 
-  // Determine if UPI is part of payment
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const paymentDetails = bill.payment_details as any[] | null;
+  const paymentDetails = typedBill.payment_details;
   const hasUpi =
     bill.payment_method === "upi" ||
     bill.payment_method === "split" ||
@@ -105,11 +154,11 @@ export default async function BillDetailPage({
         </Link>
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)]">
-            {bill.bill_number}
+            {typedBill.bill_number}
           </h1>
-          <Badge>{bill.payment_method === "split" ? "SPLIT" : bill.payment_method}</Badge>
-          <Badge className={bill.is_paid ? "bg-[#00592B]" : "bg-[#E374C7]"}>
-            {bill.is_paid ? "PAID" : "UNPAID"}
+          <Badge>{typedBill.payment_method === "split" ? "SPLIT" : typedBill.payment_method}</Badge>
+          <Badge className={typedBill.is_paid ? "bg-[#00592B]" : "bg-[#E374C7]"}>
+            {typedBill.is_paid ? "PAID" : "UNPAID"}
           </Badge>
           {isVoided && (
             <Badge className="bg-[#C42424]">VOIDED</Badge>
@@ -117,40 +166,55 @@ export default async function BillDetailPage({
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {!isVoided && (
-            <EditBillButton
+                      <EditBillButton
               bill={{
-                id: bill.id,
-                customer_name: bill.customer_name,
-                customer_phone: bill.customer_phone,
-                school_id: bill.school_id,
-                subtotal: bill.subtotal,
-                discount: bill.discount,
-                total: bill.total,
-                notes: bill.notes,
+                id: typedBill.id,
+                customer_name: typedBill.customer_name,
+                customer_phone: typedBill.customer_phone,
+                school_id: typedBill.school_id,
+                subtotal: typedBill.subtotal,
+                discount: typedBill.discount,
+                total: typedBill.total,
+                notes: typedBill.notes,
               }}
-              items={items || []}
+              items={typedItems}
             />
           )}
-          {!isVoided && <MarkPaidButton billId={bill.id} isPaid={bill.is_paid} />}
+          {!isVoided && <MarkPaidButton billId={typedBill.id} isPaid={typedBill.is_paid} billItems={typedItems} billData={{ bill_number: typedBill.bill_number, created_at: typedBill.created_at, customer_name: typedBill.customer_name, customer_phone: typedBill.customer_phone, subtotal: typedBill.subtotal, discount: typedBill.discount, total: typedBill.total, payment_method: typedBill.payment_method, notes: typedBill.notes }} shopConfig={shopMap} />}
           <PrintButton />
           {!isVoided && (
             <ThermalPrintButton
               bill={{
-                bill_number: bill.bill_number,
-                created_at: bill.created_at,
-                customer_name: bill.customer_name,
-                customer_phone: bill.customer_phone,
-                subtotal: bill.subtotal,
-                discount: bill.discount,
-                total: bill.total,
-                payment_method: bill.payment_method,
-                notes: bill.notes,
+                bill_number: typedBill.bill_number,
+                created_at: typedBill.created_at,
+                customer_name: typedBill.customer_name,
+                customer_phone: typedBill.customer_phone,
+                subtotal: typedBill.subtotal,
+                discount: typedBill.discount,
+                total: typedBill.total,
+                payment_method: typedBill.payment_method,
+                notes: typedBill.notes,
               }}
-              items={items || []}
+              items={typedItems}
             />
           )}
+          <AutoPrintHandler
+            bill={{
+              bill_number: typedBill.bill_number,
+              created_at: typedBill.created_at,
+              customer_name: typedBill.customer_name,
+              customer_phone: typedBill.customer_phone,
+              subtotal: typedBill.subtotal,
+              discount: typedBill.discount,
+              total: typedBill.total,
+              payment_method: typedBill.payment_method,
+              notes: typedBill.notes,
+            }}
+            items={typedItems}
+            shopConfig={shopMap}
+          />
           {!isVoided && (
-            <VoidBillButton billId={bill.id} billNumber={bill.bill_number} />
+            <VoidBillButton billId={typedBill.id} billNumber={typedBill.bill_number} />
           )}
         </div>
       </div>
@@ -292,8 +356,7 @@ export default async function BillDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {items?.map((item: any) => (
+                {typedItems.map((item) => (
                   <tr key={item.id} className="border-b border-black last:border-0">
                     <td className="py-2.5">
                       <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">{item.product_name}</span>
@@ -336,6 +399,14 @@ export default async function BillDetailPage({
             </div>
           </div>
 
+          {/* Amount in words */}
+          <div className="border-t-2 border-black pt-4">
+            <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">AMOUNT IN WORDS</p>
+            <p className="text-[14px] font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+              {amountToWords(bill.total)}
+            </p>
+          </div>
+
           {/* Payment on receipt */}
           {paymentDetails && paymentDetails.length > 0 && (
             <div className="border-t-2 border-black pt-4">
@@ -370,8 +441,14 @@ export default async function BillDetailPage({
             </div>
           )}
 
-          <div className="text-center border-t-2 border-black pt-4 text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
-            THANK YOU FOR YOUR PURCHASE!
+          <div className="text-center border-t-2 border-black pt-4 space-y-3">
+            <p className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">
+              AUTHORIZED SIGNATORY
+            </p>
+            <div className="w-48 mx-auto border-b-2 border-black" />
+            <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+              THANK YOU FOR YOUR PURCHASE!
+            </p>
           </div>
         </CardContent>
       </Card>

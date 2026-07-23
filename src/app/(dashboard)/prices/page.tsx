@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,7 @@ interface Product {
   id: string;
   name: string;
   category: string;
+  size_group_id: string | null;
 }
 
 interface Size {
@@ -74,30 +75,55 @@ export default function PricesPage() {
 
   const supabase = createClient();
 
+  const loadSizesForProduct = useCallback(async (productId: string) => {
+    if (!productId) { setSizes([]); return; }
+    const product = products.find((p) => p.id === productId);
+    if (!product?.size_group_id) { setSizes([]); return; }
+    const { data } = await supabase
+      .from("size_group_items")
+      .select("sizes(id, label, numeric_value)")
+      .eq("size_group_id", product.size_group_id)
+      .order("sort_order");
+    const resolved = (data || []).map((row) => {
+      const s = Array.isArray(row.sizes) ? row.sizes[0] : row.sizes;
+      return s ? { id: s.id, label: s.label, numeric_value: s.numeric_value } : null;
+    }).filter(Boolean) as Size[];
+    setSizes(resolved);
+  }, [products, supabase]);
+
+  async function loadData() {
+    const [schoolsRes, productsRes] = await Promise.all([
+      supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
+      supabase.from("products").select("id, name, category, size_group_id").order("name"),
+    ]);
+
+    setSchools(schoolsRes.data || []);
+    setProducts(productsRes.data || []);
+
+    await loadPrices();
+  }
+
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const schoolId = params.get("school_id");
     if (schoolId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedSchool(schoolId);
     }
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function loadData() {
-    const [schoolsRes, productsRes, sizesRes] = await Promise.all([
-      supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
-      supabase.from("products").select("id, name, category").order("name"),
-      supabase.from("sizes").select("id, label, numeric_value").order("numeric_value"),
-    ]);
-
-    setSchools(schoolsRes.data || []);
-    setProducts(productsRes.data || []);
-    setSizes(sizesRes.data || []);
-
-    await loadPrices();
-  }
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (formProduct) {
+      loadSizesForProduct(formProduct);
+    } else {
+      setSizes([]);
+    }
+    setFormSize("");
+  }, [formProduct, loadSizesForProduct]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function loadPrices() {
     const { data } = await supabase
@@ -106,9 +132,19 @@ export default function PricesPage() {
       .eq("is_active", true)
       .order("schools(name)");
 
+    interface RawPriceListRow {
+      id: string;
+      school_id: string;
+      product_id: string;
+      size_id: string | null;
+      price: number;
+      schools: { id: string; name: string; short_code: string | null }[] | { id: string; name: string; short_code: string | null };
+      products: { id: string; name: string; category: string }[] | { id: string; name: string; category: string };
+      sizes: { id: string; label: string; numeric_value: number | null }[] | { id: string; label: string; numeric_value: number | null } | null;
+    }
+
     setPrices(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (data || []).map((row: any) => ({
+      (data || []).map((row: RawPriceListRow) => ({
         ...row,
         schools: Array.isArray(row.schools) ? row.schools[0] : row.schools,
         products: Array.isArray(row.products) ? row.products[0] : row.products,

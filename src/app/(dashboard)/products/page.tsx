@@ -26,6 +26,11 @@ import { Badge } from "@/components/ui/badge";
 import { Package, Plus, Pencil, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
+interface SizeGroup {
+  id: string;
+  name: string;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -34,6 +39,7 @@ interface Product {
   current_stock: number;
   low_stock_threshold: number;
   hsn_code: string | null;
+  size_group_id: string | null;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -46,6 +52,7 @@ const categoryLabels: Record<string, string> = {
 export default function ProductsPage() {
   const supabase = createClient();
   const [products, setProducts] = useState<Product[]>([]);
+  const [sizeGroups, setSizeGroups] = useState<SizeGroup[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
@@ -53,19 +60,26 @@ export default function ProductsPage() {
 
   const [formName, setFormName] = useState("");
   const [formCategory, setFormCategory] = useState("uniform");
+  const [formSizeGroup, setFormSizeGroup] = useState("");
   const [formStock, setFormStock] = useState("0");
   const [formThreshold, setFormThreshold] = useState("0");
   const [formHsn, setFormHsn] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function loadProducts() {
-    const { data } = await supabase.from("products").select("id, name, category, sort_order, current_stock, low_stock_threshold, hsn_code").order("sort_order").order("name");
+    const { data } = await supabase.from("products").select("id, name, category, sort_order, current_stock, low_stock_threshold, hsn_code, size_group_id").order("sort_order").order("name");
     setProducts(data || []);
+  }
+
+  async function loadSizeGroups() {
+    const { data } = await supabase.from("size_groups").select("id, name").order("sort_order");
+    setSizeGroups(data || []);
   }
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadProducts();
+    loadSizeGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -73,6 +87,7 @@ export default function ProductsPage() {
   function openAddDialog() {
     setFormName("");
     setFormCategory("uniform");
+    setFormSizeGroup("");
     setFormStock("0");
     setFormThreshold("0");
     setFormHsn("");
@@ -83,6 +98,7 @@ export default function ProductsPage() {
     setEditProduct(product);
     setFormName(product.name);
     setFormCategory(product.category);
+    setFormSizeGroup(product.size_group_id || "");
     setFormStock(String(product.current_stock));
     setFormThreshold(String(product.low_stock_threshold));
     setFormHsn(product.hsn_code || "");
@@ -95,6 +111,7 @@ export default function ProductsPage() {
     const { error } = await supabase.from("products").insert({
       name: formName,
       category: formCategory,
+      size_group_id: formSizeGroup && formSizeGroup !== "__none__" ? formSizeGroup : null,
       sort_order: maxSort + 1,
       current_stock: parseInt(formStock) || 0,
       low_stock_threshold: parseInt(formThreshold) || 0,
@@ -119,6 +136,7 @@ export default function ProductsPage() {
       .update({
         name: formName,
         category: formCategory,
+        size_group_id: formSizeGroup && formSizeGroup !== "__none__" ? formSizeGroup : null,
         current_stock: parseInt(formStock) || 0,
         low_stock_threshold: parseInt(formThreshold) || 0,
         hsn_code: formHsn || null,
@@ -233,6 +251,11 @@ export default function ProductsPage() {
                     <Badge>
                       {categoryLabels[product.category] || product.category}
                     </Badge>
+                    {product.size_group_id && (
+                      <Badge className="bg-[#0023D1]">
+                        {sizeGroups.find((g) => g.id === product.size_group_id)?.name || "SIZES"}
+                      </Badge>
+                    )}
                     {product.low_stock_threshold > 0 && (
                       <Badge className={product.current_stock <= product.low_stock_threshold ? "bg-[#C42424]" : "bg-[#00592B]"}>
                         STOCK: {product.current_stock}
@@ -297,6 +320,21 @@ export default function ProductsPage() {
                   <SelectItem value="shoes">SHOES</SelectItem>
                   <SelectItem value="accessories">ACCESSORIES</SelectItem>
                   <SelectItem value="other">OTHER</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                SIZE GROUP
+              </Label>
+              <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+                WHICH SIZES DOES THIS PRODUCT USE?
+              </p>
+              <Select value={formSizeGroup} onValueChange={(v) => setFormSizeGroup(v ?? "")} items={[{ value: "__none__", label: "NO SIZE" }, ...sizeGroups.map((g) => ({ value: g.id, label: g.name }))]}>
+                <SelectTrigger><SelectValue placeholder="NO SIZE (BAGS, TIES, ETC.)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">NO SIZE</SelectItem>
+                  {sizeGroups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -372,6 +410,18 @@ export default function ProductsPage() {
                   <SelectItem value="shoes">SHOES</SelectItem>
                   <SelectItem value="accessories">ACCESSORIES</SelectItem>
                   <SelectItem value="other">OTHER</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[16px] font-bold uppercase [font-family:var(--font-oswald)]">
+                SIZE GROUP
+              </Label>
+              <Select value={formSizeGroup} onValueChange={(v) => setFormSizeGroup(v ?? "")} items={[{ value: "__none__", label: "NO SIZE" }, ...sizeGroups.map((g) => ({ value: g.id, label: g.name }))]}>
+                <SelectTrigger><SelectValue placeholder="NO SIZE" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">NO SIZE</SelectItem>
+                  {sizeGroups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

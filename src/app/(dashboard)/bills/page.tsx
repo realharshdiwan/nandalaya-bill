@@ -10,6 +10,19 @@ import { Receipt, Plus, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
+interface BillListRow {
+  id: string;
+  bill_number: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  total: number;
+  payment_method: string;
+  is_paid: boolean;
+  created_at: string;
+  status: string;
+  schools: { name: string; short_code: string | null }[] | { name: string; short_code: string | null };
+}
+
 const PAGE_SIZE = 20;
 
 export default async function BillsPage({
@@ -135,8 +148,7 @@ export default async function BillsPage({
       {bills && bills.length > 0 ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {bills.map((bill: any) => {
+            {bills.map((bill: BillListRow) => {
               const school = Array.isArray(bill.schools) ? bill.schools[0] : bill.schools;
               const isVoided = bill.status === "voided";
               return (

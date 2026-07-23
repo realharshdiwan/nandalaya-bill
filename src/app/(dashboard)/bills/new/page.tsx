@@ -9,8 +9,6 @@ import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Select,
@@ -19,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, Receipt } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Receipt, User, FileText } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { getCart, clearCart } from "@/lib/cart";
@@ -35,6 +33,7 @@ interface Product {
   name: string;
   sort_order: number;
   current_stock: number;
+  size_group_id: string | null;
 }
 
 interface Size {
@@ -83,6 +82,8 @@ export default function NewBillPage() {
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<BillItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showCustomer, setShowCustomer] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   const [addProductId, setAddProductId] = useState("");
   const [addSizeId, setAddSizeId] = useState("");
@@ -91,16 +92,30 @@ export default function NewBillPage() {
   const [addDiscountType, setAddDiscountType] = useState<"none" | "flat" | "percent">("none");
   const [addDiscountValue, setAddDiscountValue] = useState("0");
 
+  const loadSizesForProduct = useCallback(async (productId: string) => {
+    if (!productId) { setSizes([]); return; }
+    const product = products.find((p) => p.id === productId);
+    if (!product?.size_group_id) { setSizes([]); return; }
+    const { data } = await supabase
+      .from("size_group_items")
+      .select("sizes(id, label)")
+      .eq("size_group_id", product.size_group_id)
+      .order("sort_order");
+    const resolved = (data || []).map((row) => {
+      const s = Array.isArray(row.sizes) ? row.sizes[0] : row.sizes;
+      return { id: s?.id || "", label: s?.label || "" };
+    }).filter((s) => s.id);
+    setSizes(resolved);
+  }, [products, supabase]);
+
   useEffect(() => {
     async function load() {
-      const [schoolsRes, productsRes, sizesRes] = await Promise.all([
+      const [schoolsRes, productsRes] = await Promise.all([
         supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name, sort_order, current_stock").order("sort_order").order("name"),
-        supabase.from("sizes").select("id, label").order("numeric_value"),
+        supabase.from("products").select("id, name, sort_order, current_stock, size_group_id").order("sort_order").order("name"),
       ]);
       setSchools(schoolsRes.data || []);
       setProducts(productsRes.data || []);
-      setSizes(sizesRes.data || []);
 
       // Check for pre-loaded cart from school detail page
       const cartItems = getCart();
@@ -113,18 +128,16 @@ export default function NewBillPage() {
 
         // Convert CartItems → BillItems
         const allProducts = productsRes.data || [];
-        const allSizes = sizesRes.data || [];
 
         const newBillItems: BillItem[] = cartItems.map((ci) => {
           const product = allProducts.find((p) => p.id === ci.product_id);
-          const size = ci.size_id ? allSizes.find((s) => s.id === ci.size_id) : null;
           const subtotal = ci.qty * ci.price;
           return {
             key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             product_id: ci.product_id,
             product_name: ci.product_name || product?.name || "",
             size_id: ci.size_id,
-            size_label: ci.size_label || size?.label || "",
+            size_label: ci.size_label,
             qty: ci.qty,
             price: ci.price,
             subtotal,
@@ -154,8 +167,13 @@ export default function NewBillPage() {
       .eq("school_id", schoolId)
       .eq("is_active", true);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const normalized = (data || []).map((row: any) => ({
+    interface RawPriceListRow {
+      product_id: string;
+      price: number;
+      sizes: { id: string; label: string }[] | { id: string; label: string } | null;
+    }
+
+    const normalized = (data || []).map((row: RawPriceListRow) => ({
       product_id: row.product_id,
       price: row.price,
       sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
@@ -167,6 +185,18 @@ export default function NewBillPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadSchoolPrices(selectedSchool);
   }, [selectedSchool, loadSchoolPrices]);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  // Load sizes when product changes
+  useEffect(() => {
+    if (addProductId) {
+      loadSizesForProduct(addProductId);
+    } else {
+      setSizes([]);
+    }
+    setAddSizeId("");
+  }, [addProductId, loadSizesForProduct]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   /* eslint-disable react-hooks/set-state-in-effect */
   // Auto-fill price when product/size/school changes
@@ -251,6 +281,28 @@ export default function NewBillPage() {
 
   function removeItem(key: string) {
     setItems((prev) => prev.filter((i) => i.key !== key));
+  }
+
+  function updateItemQty(key: string, delta: number) {
+    setItems((prev) => prev.map((item) => {
+      if (item.key !== key) return item;
+      const newQty = Math.max(1, item.qty + delta);
+      const newSubtotal = newQty * item.price;
+      let newDiscountAmount = 0;
+      if (item.discount_type === "flat") {
+        newDiscountAmount = item.discount_value;
+      } else if (item.discount_type === "percent") {
+        newDiscountAmount = (newSubtotal * item.discount_value) / 100;
+      }
+      newDiscountAmount = Math.min(newDiscountAmount, newSubtotal);
+      return {
+        ...item,
+        qty: newQty,
+        subtotal: newSubtotal,
+        discount_amount: newDiscountAmount,
+        effective_subtotal: newSubtotal - newDiscountAmount,
+      };
+    }));
   }
 
   const subtotal = items.reduce((sum, i) => sum + i.effective_subtotal, 0);
@@ -356,11 +408,12 @@ export default function NewBillPage() {
     }
 
     toast.success(`Bill ${billNumber} created`);
-    router.push(`/bills/${bill.id}`);
+    const billIsPaid = paymentMethod !== "credit" && !(paymentMethod === "split" && parseFloat(splitCredit) > 0);
+    router.push(`/bills/${bill.id}${billIsPaid ? "?autoprint=true" : ""}`);
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 pb-24">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <Link
@@ -376,16 +429,14 @@ export default function NewBillPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-4">
-          {/* School */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="md:col-span-2 space-y-4">
+          {/* School — compact */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[16px]">SCHOOL (OPTIONAL — FOR PRICE LOOKUP)</CardTitle>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="p-4">
+              <Label className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">SCHOOL (OPTIONAL)</Label>
               <Select value={selectedSchool} onValueChange={(v) => setSelectedSchool(v ?? "")} items={schools.map((s) => ({ value: s.id, label: s.short_code ? `${s.short_code} — ${s.name}` : s.name }))}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full mt-1">
                   <SelectValue placeholder="SELECT SCHOOL FOR AUTO-PRICING" />
                 </SelectTrigger>
                 <SelectContent>
@@ -401,13 +452,10 @@ export default function NewBillPage() {
 
           {/* Add item */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[16px]">ADD ITEM</CardTitle>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 space-y-3">
+              <Label className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">ADD ITEM</Label>
               <div className="grid gap-3 sm:grid-cols-4">
-                <div className="sm:col-span-1">
-                  <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PRODUCT</Label>
+                <div className="sm:col-span-2">
                   <Select value={addProductId} onValueChange={(v) => setAddProductId(v ?? "")} items={products.map((p) => ({ value: p.id, label: p.name }))}>
                     <SelectTrigger><SelectValue placeholder="PRODUCT" /></SelectTrigger>
                     <SelectContent>
@@ -416,83 +464,88 @@ export default function NewBillPage() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">SIZE (OPTIONAL)</Label>
                   <Select value={addSizeId} onValueChange={(v) => setAddSizeId(v ?? "")} items={sizes.map((s) => ({ value: s.id, label: s.label }))}>
-                    <SelectTrigger><SelectValue placeholder="SKIP IF NO SIZE" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="SIZE" /></SelectTrigger>
                     <SelectContent>
                       {sizes.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">QTY</Label>
-                  <Input type="number" min="1" value={addQty} onChange={(e) => setAddQty(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PRICE (₹)</Label>
-                  <Input type="number" min="0" step="0.01" value={addPrice} onChange={(e) => setAddPrice(e.target.value)} placeholder="0" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input type="number" min="1" value={addQty} onChange={(e) => setAddQty(e.target.value)} placeholder="QTY" />
+                  <Input type="number" min="0" step="0.01" value={addPrice} onChange={(e) => setAddPrice(e.target.value)} placeholder="₹ PRICE" />
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-4 mt-2">
-                <div>
-                  <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">DISCOUNT TYPE</Label>
-                  <Select value={addDiscountType} onValueChange={(v) => setAddDiscountType((v as "none" | "flat" | "percent") ?? "none")} items={[{ value: "none", label: "NONE" }, { value: "flat", label: "₹ OFF" }, { value: "percent", label: "% OFF" }]}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+              {/* Discount row — compact, inline */}
+              <div className="flex items-end gap-2">
+                <div className="w-32">
+                  <Select value={addDiscountType} onValueChange={(v) => setAddDiscountType((v as "none" | "flat" | "percent") ?? "none")} items={[{ value: "none", label: "NO DISCOUNT" }, { value: "flat", label: "₹ OFF" }, { value: "percent", label: "% OFF" }]}>
+                    <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">NONE</SelectItem>
+                      <SelectItem value="none">NO DISCOUNT</SelectItem>
                       <SelectItem value="flat">₹ OFF</SelectItem>
                       <SelectItem value="percent">% OFF</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {addDiscountType !== "none" && (
-                  <div>
-                    <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
-                      {addDiscountType === "flat" ? "DISCOUNT (₹)" : "DISCOUNT (%)"}
-                    </Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={addDiscountValue}
-                      onChange={(e) => setAddDiscountValue(e.target.value)}
-                      placeholder="0"
-                    />
-                  </div>
+                  <Input
+                    type="number" min="0" step="0.01"
+                    value={addDiscountValue}
+                    onChange={(e) => setAddDiscountValue(e.target.value)}
+                    placeholder={addDiscountType === "flat" ? "₹" : "%"}
+                    className="h-9 w-24 text-[13px]"
+                  />
                 )}
+                <Button onClick={addItem} disabled={!addProductId} size="sm">
+                  <Plus className="mr-1 h-4 w-4" />
+                  <span>ADD</span>
+                </Button>
               </div>
-              <Button onClick={addItem} className="mt-3" disabled={!addProductId}>
-                <Plus className="mr-2 h-4 w-4" />
-                <span>ADD ITEM</span>
-              </Button>
             </CardContent>
           </Card>
 
-          {/* Items */}
+          {/* Items list */}
           {items.length > 0 ? (
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-[16px]">ITEMS ({items.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
+              <CardContent className="p-4">
                 <div className="space-y-2">
                   {items.map((item) => (
-                    <div key={item.key} className="flex items-center gap-3 rounded-[12px] border-2 border-black px-3 py-2.5">
+                    <div key={item.key} className="flex items-center gap-2 rounded-[12px] border-2 border-black px-3 py-2">
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+                        <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase text-[15px] truncate">
                           {item.product_name}
-                          {item.size_label && <span className="ml-2 text-[14px] text-[#4D8A6B]">{item.size_label}</span>}
+                          {item.size_label && <span className="ml-1 text-[13px] text-[#4D8A6B]">({item.size_label})</span>}
                         </p>
-                        <p className="text-[14px] text-[#003F1E] [font-family:var(--font-oswald)] uppercase font-bold">
-                          {item.qty} × ₹{item.price} = ₹{item.subtotal}
+                        <p className="text-[13px] text-[#003F1E] [font-family:var(--font-oswald)] uppercase font-bold">
+                          ₹{item.price} × {item.qty} = ₹{item.effective_subtotal}
                           {item.discount_amount > 0 && (
-                            <span className="ml-2 text-[#C42424]">
-                              -{item.discount_type === "flat" ? `₹${item.discount_value}` : `${item.discount_value}%`} = ₹{item.effective_subtotal}
+                            <span className="ml-1 text-[#C42424]">
+                              (-{item.discount_type === "flat" ? `₹${item.discount_value}` : `${item.discount_value}%`})
                             </span>
                           )}
                         </p>
                       </div>
-                      <button onClick={() => removeItem(item.key)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#C42424]/10 hover:text-[#C42424] cursor-pointer">
+                      {/* Quick increment buttons */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => updateItemQty(item.key, -1)}
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#00592B]/10 text-[#00592B] hover:bg-[#00592B]/20 cursor-pointer"
+                        >
+                          <span className="text-[18px] font-bold leading-none">−</span>
+                        </button>
+                        <span className="w-8 text-center text-[15px] font-bold [font-family:var(--font-oswald)] text-[#00592B]">{item.qty}</span>
+                        <button
+                          onClick={() => updateItemQty(item.key, 1)}
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#00592B]/10 text-[#00592B] hover:bg-[#00592B]/20 cursor-pointer"
+                        >
+                          <span className="text-[18px] font-bold leading-none">+</span>
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => removeItem(item.key)}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[#4D8A6B] hover:bg-[#C42424]/10 hover:text-[#C42424] cursor-pointer"
+                      >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -501,91 +554,75 @@ export default function NewBillPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="text-center py-8 text-[#4D8A6B]">
+            <div className="text-center py-8 text-[#4D8A6B] rounded-[20px] border-2 border-dashed border-[#4D8A6B]/30">
               <Receipt className="mx-auto h-8 w-8 mb-2" />
-              <p className="text-[14px] [font-family:var(--font-oswald)] uppercase font-bold">NO ITEMS ADDED YET</p>
+              <p className="text-[14px] [font-family:var(--font-oswald)] uppercase font-bold">ADD ITEMS TO START</p>
             </div>
           )}
         </div>
 
-        {/* Right column */}
+        {/* Right column — payment and summary */}
         <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[16px]">CUSTOMER (OPTIONAL)</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">NAME</Label>
-                <Input placeholder="WALK-IN CUSTOMER" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PHONE</Label>
-                <Input placeholder="PHONE NUMBER" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-              </div>
-            </CardContent>
-          </Card>
+          {/* Customer — collapsed by default */}
+          <button
+            onClick={() => setShowCustomer(!showCustomer)}
+            className="w-full flex items-center justify-between rounded-[20px] border-2 border-black bg-white px-4 py-3 cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4 text-[#00592B]" />
+              <span className="text-[14px] font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+                {customerName || customerPhone ? `${customerName || "WALK-IN"}${customerPhone ? ` • ${customerPhone}` : ""}` : "ADD CUSTOMER (OPTIONAL)"}
+              </span>
+            </div>
+            <span className="text-[14px] text-[#4D8A6B]">{showCustomer ? "▲" : "▼"}</span>
+          </button>
+          {showCustomer && (
+            <Card>
+              <CardContent className="p-4 space-y-3">
+                <div>
+                  <Label className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">NAME</Label>
+                  <Input placeholder="WALK-IN CUSTOMER" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PHONE</Label>
+                  <Input placeholder="PHONE NUMBER" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
+          {/* Payment — always visible */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[16px]">PAYMENT</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">METHOD</Label>
-                <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "cash")} items={[{ value: "cash", label: "CASH" }, { value: "upi", label: "UPI" }, { value: "card", label: "CARD" }, { value: "credit", label: "CREDIT" }, { value: "split", label: "SPLIT" }]}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">CASH</SelectItem>
-                    <SelectItem value="upi">UPI</SelectItem>
-                    <SelectItem value="card">CARD</SelectItem>
-                    <SelectItem value="credit">CREDIT</SelectItem>
-                    <SelectItem value="split">SPLIT (CASH + UPI + CREDIT)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <CardContent className="p-4 space-y-3">
+              <Label className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">PAYMENT</Label>
+              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "cash")} items={[{ value: "cash", label: "CASH" }, { value: "upi", label: "UPI" }, { value: "card", label: "CARD" }, { value: "credit", label: "CREDIT" }, { value: "split", label: "SPLIT" }]}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">CASH</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                  <SelectItem value="card">CARD</SelectItem>
+                  <SelectItem value="credit">CREDIT</SelectItem>
+                  <SelectItem value="split">SPLIT (CASH + UPI + CREDIT)</SelectItem>
+                </SelectContent>
+              </Select>
 
               {paymentMethod === "split" && (
-                <div className="space-y-3 rounded-[12px] border-2 border-[#E374C7] bg-pink-50 p-3">
-                  <p className="text-[12px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">
-                    TOTAL: ₹{total.toFixed(2)} — ENTER EACH PAYMENT
+                <div className="space-y-2 rounded-[12px] border-2 border-[#E374C7] bg-pink-50 p-3">
+                  <p className="text-[13px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">
+                    TOTAL: ₹{total.toFixed(2)}
                   </p>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-16">💵 CASH</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={splitCash}
-                        onChange={(e) => setSplitCash(e.target.value)}
-                        className="flex-1"
-                      />
+                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-14">CASH</span>
+                      <Input type="number" min="0" step="0.01" placeholder="0" value={splitCash} onChange={(e) => setSplitCash(e.target.value)} className="flex-1 h-10" />
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-16">📱 UPI</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={splitUpi}
-                        onChange={(e) => setSplitUpi(e.target.value)}
-                        className="flex-1"
-                      />
+                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-14">UPI</span>
+                      <Input type="number" min="0" step="0.01" placeholder="0" value={splitUpi} onChange={(e) => setSplitUpi(e.target.value)} className="flex-1 h-10" />
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-16">📋 CREDIT</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0"
-                        value={splitCredit}
-                        onChange={(e) => setSplitCredit(e.target.value)}
-                        className="flex-1"
-                      />
+                      <span className="text-[14px] text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold w-14">CREDIT</span>
+                      <Input type="number" min="0" step="0.01" placeholder="0" value={splitCredit} onChange={(e) => setSplitCredit(e.target.value)} className="flex-1 h-10" />
                     </div>
                   </div>
                   {(() => {
@@ -595,11 +632,11 @@ export default function NewBillPage() {
                     const splitTotal = cashAmt + upiAmt + creditAmt;
                     const matches = Math.abs(splitTotal - total) < 0.01;
                     return (
-                      <div className={`flex justify-between items-center text-[14px] font-bold [font-family:var(--font-oswald)] uppercase ${
+                      <div className={`flex justify-between items-center text-[13px] font-bold [font-family:var(--font-oswald)] uppercase ${
                         matches ? "text-[#00592B]" : "text-[#C42424]"
                       }`}>
-                        <span>ENTERED: ₹{splitTotal.toFixed(2)}</span>
-                        <span>{matches ? "✓ MATCHES" : `≠ ₹${(total - splitTotal).toFixed(2)} REMAINING`}</span>
+                        <span>₹{splitTotal.toFixed(2)}</span>
+                        <span>{matches ? "✓ OK" : `₹${(total - splitTotal).toFixed(2)} LEFT`}</span>
                       </div>
                     );
                   })()}
@@ -607,49 +644,64 @@ export default function NewBillPage() {
               )}
 
               <div>
-                <Label className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">DISCOUNT (₹)</Label>
+                <Label className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">DISCOUNT (₹)</Label>
                 <Input type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-[16px]">NOTES</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <textarea
-                className="w-full rounded-[12px] border-2 border-black bg-white px-3 py-2 text-[14px] font-bold text-[#00592B] placeholder:text-[#4D8A6B] outline-none [font-family:var(--font-oswald)] uppercase"
-                rows={2}
-                placeholder="OPTIONAL NOTES..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </CardContent>
-          </Card>
+          {/* Notes — collapsed by default */}
+          <button
+            onClick={() => setShowNotes(!showNotes)}
+            className="w-full flex items-center justify-between rounded-[20px] border-2 border-black bg-white px-4 py-3 cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-[#00592B]" />
+              <span className="text-[14px] font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+                {notes ? `NOTES: ${notes.slice(0, 30)}${notes.length > 30 ? "..." : ""}` : "ADD NOTES (OPTIONAL)"}
+              </span>
+            </div>
+            <span className="text-[14px] text-[#4D8A6B]">{showNotes ? "▲" : "▼"}</span>
+          </button>
+          {showNotes && (
+            <Card>
+              <CardContent className="p-4">
+                <textarea
+                  className="w-full rounded-[12px] border-2 border-black bg-white px-3 py-2 text-[14px] font-bold text-[#00592B] placeholder:text-[#4D8A6B] outline-none [font-family:var(--font-oswald)] uppercase"
+                  rows={2}
+                  placeholder="OPTIONAL NOTES..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="bg-[#00592B] border-black">
-            <CardContent className="space-y-2 p-4">
-              <div className="flex justify-between text-[14px]">
-                <span className="text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">SUBTOTAL</span>
-                <span className="font-bold text-white [font-family:var(--font-oswald)]">₹{subtotal.toFixed(2)}</span>
-              </div>
-              {discountNum > 0 && (
+          {/* Total + Save — sticky at bottom */}
+          <div className="sticky bottom-4 space-y-3">
+            <Card className="bg-[#00592B] border-black">
+              <CardContent className="space-y-2 p-4">
                 <div className="flex justify-between text-[14px]">
-                  <span className="text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">DISCOUNT</span>
-                  <span className="font-bold text-[#E374C7] [font-family:var(--font-oswald)]">-₹{discountNum.toFixed(2)}</span>
+                  <span className="text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">SUBTOTAL</span>
+                  <span className="font-bold text-white [font-family:var(--font-oswald)]">₹{subtotal.toFixed(2)}</span>
                 </div>
-              )}
-              <div className="border-t border-[#4D8A6B] pt-2 flex justify-between">
-                <span className="font-bold text-white [font-family:var(--font-oswald)] uppercase text-[16px]">TOTAL</span>
-                <span className="text-[20px] font-bold text-[#E374C7] [font-family:var(--font-oswald)]">₹{total.toFixed(2)}</span>
-              </div>
-            </CardContent>
-          </Card>
+                {discountNum > 0 && (
+                  <div className="flex justify-between text-[14px]">
+                    <span className="text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">DISCOUNT</span>
+                    <span className="font-bold text-[#E374C7] [font-family:var(--font-oswald)]">-₹{discountNum.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="border-t border-[#4D8A6B] pt-2 flex justify-between">
+                  <span className="font-bold text-white [font-family:var(--font-oswald)] uppercase text-[16px]">TOTAL</span>
+                  <span className="text-[22px] font-bold text-[#E374C7] [font-family:var(--font-oswald)]">₹{total.toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
 
-          <Button onClick={handleSave} className="w-full h-12 text-[16px]" disabled={loading || items.length === 0}>
-            <span>{loading ? "SAVING..." : `SAVE BILL — ₹${total.toFixed(2)}`}</span>
-          </Button>
+            <Button onClick={handleSave} className="w-full h-12 text-[16px]" disabled={loading || items.length === 0}>
+              <span>{loading ? "SAVING..." : `SAVE BILL — ₹${total.toFixed(2)}`}</span>
+            </Button>
+          </div>
         </div>
       </div>
     </div>

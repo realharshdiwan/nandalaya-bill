@@ -38,6 +38,20 @@ interface ProductGroup {
   entries: PriceEntry[];
 }
 
+interface PriceListRow {
+  id: string;
+  price: number;
+  products: { id: string; name: string; category: string }[] | { id: string; name: string; category: string };
+  sizes: { id: string; label: string; numeric_value: number }[] | { id: string; label: string; numeric_value: number };
+}
+
+interface NormalizedPriceRow {
+  id: string;
+  price: number;
+  products: { id: string; name: string; category: string };
+  sizes: { id: string; label: string; numeric_value: number };
+}
+
 export default function SchoolDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -82,16 +96,14 @@ export default function SchoolDetailPage() {
         .eq("is_active", true)
         .order("products(name)");
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const normalized = (priceList || []).map((pl: any) => ({
+      const normalized = (priceList || []).map((pl: PriceListRow): NormalizedPriceRow => ({
         ...pl,
         products: Array.isArray(pl.products) ? pl.products[0] : pl.products,
         sizes: Array.isArray(pl.sizes) ? pl.sizes[0] : pl.sizes,
       }));
 
       const productMap: Record<string, ProductGroup> = {};
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      normalized.forEach((pl: any) => {
+      normalized.forEach((pl) => {
         const name = pl.products?.name || "Unknown";
         if (!productMap[name]) {
           productMap[name] = {
@@ -109,7 +121,14 @@ export default function SchoolDetailPage() {
         });
       });
 
-      setProducts(Object.values(productMap));
+      const groups = Object.values(productMap);
+      groups.sort((a, b) => {
+        const order = ["uniform", "shoes", "accessories", "other"];
+        const ai = order.indexOf(a.category);
+        const bi = order.indexOf(b.category);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+      setProducts(groups);
       setLoading(false);
     }
     load();
@@ -201,68 +220,89 @@ export default function SchoolDetailPage() {
       </div>
 
       {products.length > 0 ? (
-        <div className="space-y-4">
-          {products.map((product) => (
-            <Card key={product.name}>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-[18px]">{product.name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {product.entries.map((entry) => {
-                    const qty = getQtyInCart(entry.product_id, entry.size_id);
-                    return (
-                      <div
-                        key={`${entry.size_id || "none"}-${entry.price}`}
-                        className={`flex items-center gap-2 rounded-[12px] border-2 border-black px-3 py-2 transition-all ${
-                          qty > 0
-                            ? "bg-[#00592B] text-white shadow-[2px_2px_0_0_#000]"
-                            : "bg-white"
-                        }`}
-                      >
-                        <span className={`text-[14px] [font-family:var(--font-oswald)] uppercase font-bold ${
-                          qty > 0 ? "text-white" : "text-[#4D8A6B]"
-                        }`}>
-                          {entry.size_label || "NO SIZE"}
-                        </span>
-                        <span className={`font-bold [font-family:var(--font-oswald)] text-[16px] ${
-                          qty > 0 ? "text-white" : "text-[#00592B]"
-                        }`}>
-                          ₹{entry.price}
-                        </span>
-                        {qty > 0 ? (
-                          <div className="flex items-center gap-1 ml-1">
-                            <button
-                              onClick={() => handleRemove(entry.product_id, entry.size_id)}
-                              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
-                            >
-                              <Minus className="h-5 w-5" />
-                            </button>
-                            <span className="text-[14px] font-bold [font-family:var(--font-oswald)] min-w-[24px] text-center">
-                              {qty}
-                            </span>
-                            <button
-                              onClick={() => handleAdd(entry)}
-                              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
-                            >
-                              <Plus className="h-5 w-5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleAdd(entry)}
-                            className="ml-1 flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#00592B] text-[#00592B] hover:bg-[#00592B] hover:text-white transition-all cursor-pointer"
-                          >
-                            <Plus className="h-5 w-5" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+        <div className="space-y-6">
+          {(() => {
+            const categoryMap: Record<string, ProductGroup[]> = {};
+            for (const p of products) {
+              const cat = p.category || "other";
+              if (!categoryMap[cat]) categoryMap[cat] = [];
+              categoryMap[cat].push(p);
+            }
+            const catOrder = ["uniform", "shoes", "accessories", "other"];
+            const sortedCats = Object.keys(categoryMap).sort(
+              (a, b) => catOrder.indexOf(a) - catOrder.indexOf(b)
+            );
+            return sortedCats.map((cat) => (
+              <div key={cat} className="space-y-3">
+                <h2 className="text-[18px] font-bold text-[#E374C7] [font-family:var(--font-oswald)] uppercase border-b border-[#E374C7]/30 pb-2">
+                  {cat === "uniform" ? "UNIFORMS" : cat === "shoes" ? "SHOES" : cat === "accessories" ? "ACCESSORIES" : "OTHER"}
+                </h2>
+                <div className="space-y-4">
+                  {categoryMap[cat].map((product) => (
+                    <Card key={product.name}>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-[18px]">{product.name}</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex flex-wrap gap-2">
+                          {product.entries.map((entry) => {
+                            const qty = getQtyInCart(entry.product_id, entry.size_id);
+                            return (
+                              <div
+                                key={`${entry.size_id || "none"}-${entry.price}`}
+                                className={`flex items-center gap-2 rounded-[12px] border-2 border-black px-3 py-2 transition-all ${
+                                  qty > 0
+                                    ? "bg-[#00592B] text-white shadow-[2px_2px_0_0_#000]"
+                                    : "bg-white"
+                                }`}
+                              >
+                                <span className={`text-[14px] [font-family:var(--font-oswald)] uppercase font-bold ${
+                                  qty > 0 ? "text-white" : "text-[#4D8A6B]"
+                                }`}>
+                                  {entry.size_label || "NO SIZE"}
+                                </span>
+                                <span className={`font-bold [font-family:var(--font-oswald)] text-[16px] ${
+                                  qty > 0 ? "text-white" : "text-[#00592B]"
+                                }`}>
+                                  ₹{entry.price}
+                                </span>
+                                {qty > 0 ? (
+                                  <div className="flex items-center gap-1 ml-1">
+                                    <button
+                                      onClick={() => handleRemove(entry.product_id, entry.size_id)}
+                                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
+                                    >
+                                      <Minus className="h-5 w-5" />
+                                    </button>
+                                    <span className="text-[14px] font-bold [font-family:var(--font-oswald)] min-w-[24px] text-center">
+                                      {qty}
+                                    </span>
+                                    <button
+                                      onClick={() => handleAdd(entry)}
+                                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 cursor-pointer"
+                                    >
+                                      <Plus className="h-5 w-5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => handleAdd(entry)}
+                                    className="ml-1 flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#00592B] text-[#00592B] hover:bg-[#00592B] hover:text-white transition-all cursor-pointer"
+                                  >
+                                    <Plus className="h-5 w-5" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            ));
+          })()}
         </div>
       ) : (
         <div className="text-center py-12">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,7 @@ interface Product {
   id: string;
   name: string;
   sort_order: number;
+  size_group_id: string | null;
 }
 
 interface Size {
@@ -105,20 +106,39 @@ export default function EditBillPanel({
   const [addDiscountType, setAddDiscountType] = useState<"none" | "flat" | "percent">("none");
   const [addDiscountValue, setAddDiscountValue] = useState("0");
 
+  const loadSizesForProduct = useCallback(async (productId: string) => {
+    if (!productId) { setSizes([]); return; }
+    const product = products.find((p) => p.id === productId);
+    if (!product?.size_group_id) { setSizes([]); return; }
+    const { data } = await supabase
+      .from("size_group_items")
+      .select("sizes(id, label)")
+      .eq("size_group_id", product.size_group_id)
+      .order("sort_order");
+    const resolved = (data || []).map((row) => {
+      const s = Array.isArray(row.sizes) ? row.sizes[0] : row.sizes;
+      return { id: s?.id || "", label: s?.label || "" };
+    }).filter((s) => s.id);
+    setSizes(resolved);
+  }, [products, supabase]);
+
   useEffect(() => {
     async function load() {
-      const [productsRes, sizesRes, pricesRes] = await Promise.all([
-        supabase.from("products").select("id, name, sort_order").order("sort_order").order("name"),
-        supabase.from("sizes").select("id, label").order("numeric_value"),
+      const [productsRes, pricesRes] = await Promise.all([
+        supabase.from("products").select("id, name, sort_order, size_group_id").order("sort_order").order("name"),
         bill.school_id
           ? supabase.from("price_list").select("product_id, price, sizes(id, label)").eq("school_id", bill.school_id).eq("is_active", true)
           : Promise.resolve({ data: [] }),
       ]);
       setProducts(productsRes.data || []);
-      setSizes(sizesRes.data || []);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const normalized = (pricesRes.data || []).map((row: any) => ({
+      interface RawPriceListRow {
+        product_id: string;
+        price: number;
+        sizes: { id: string; label: string }[] | { id: string; label: string } | null;
+      }
+
+      const normalized = (pricesRes.data || []).map((row: RawPriceListRow) => ({
         product_id: row.product_id,
         price: row.price,
         sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
@@ -167,6 +187,17 @@ export default function EditBillPanel({
       setAddPrice(String(noSizeMatch.price));
     }
   }, [addProductId, addSizeId, schoolPrices, bill.school_id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (addProductId) {
+      loadSizesForProduct(addProductId);
+    } else {
+      setSizes([]);
+    }
+    setAddSizeId("");
+  }, [addProductId, loadSizesForProduct]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   function addItem() {

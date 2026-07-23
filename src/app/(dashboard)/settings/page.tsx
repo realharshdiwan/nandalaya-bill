@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff, Receipt } from "lucide-react";
+import { Settings, Plus, Trash2, Pencil, Smartphone, Users, Shield, ShieldOff, Printer, Wifi, WifiOff, Receipt, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import PrinterDialog from "@/components/printer-dialog";
 import { isPrinterConnected } from "@/lib/thermal-printer";
@@ -26,6 +26,13 @@ interface Size {
   id: string;
   label: string;
   numeric_value: number | null;
+}
+
+interface SizeGroup {
+  id: string;
+  name: string;
+  sort_order: number;
+  sizes: Size[];
 }
 
 interface TeamMember {
@@ -46,14 +53,27 @@ interface ShopConfig {
 }
 
 export default function SettingsPage() {
-  const [sizes, setSizes] = useState<Size[]>([]);
-  const [newLabel, setNewLabel] = useState("");
-  const [newNumeric, setNewNumeric] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [editingSize, setEditingSize] = useState<Size | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Size | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [priceCount, setPriceCount] = useState(0);
+  const supabase = createClient();
+
+  // Size groups
+  const [groups, setGroups] = useState<SizeGroup[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [newGroupName, setNewGroupName] = useState("");
+  const [addingGroup, setAddingGroup] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<SizeGroup | null>(null);
+  const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
+
+  // Sizes within groups
+  const [sizeInputs, setSizeInputs] = useState<Record<string, string>>({});
+  const [sizeSortInputs, setSizeSortInputs] = useState<Record<string, string>>({});
+  const [addingSizeTo, setAddingSizeTo] = useState<string | null>(null);
+  const [deleteSizeTarget, setDeleteSizeTarget] = useState<{ size: Size; groupName: string } | null>(null);
+  const [deleteSizeLoading, setDeleteSizeLoading] = useState(false);
+  const [deleteSizePriceCount, setDeleteSizePriceCount] = useState(0);
+
+  // Other settings
   const [upiId, setUpiId] = useState("");
   const [upiLoading, setUpiLoading] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -63,15 +83,35 @@ export default function SettingsPage() {
     state_name: "", state_code: "", shop_tagline: "", tax_type: "composite",
   });
   const [shopLoading, setShopLoading] = useState(false);
-  const supabase = createClient();
 
-  async function loadSizes() {
-    const { data } = await supabase
-      .from("sizes")
-      .select("id, label, numeric_value")
-      .order("numeric_value");
-    setSizes(data || []);
-  }
+  const loadGroups = useCallback(async () => {
+    const { data: groupsData } = await supabase
+      .from("size_groups")
+      .select("id, name, sort_order")
+      .order("sort_order");
+
+    if (!groupsData) {
+      setGroups([]);
+      return;
+    }
+
+    const { data: itemsData } = await supabase
+      .from("size_group_items")
+      .select("size_group_id, sizes(id, label, numeric_value)")
+      .order("sort_order");
+
+    const itemsByGroup: Record<string, Size[]> = {};
+    for (const item of itemsData || []) {
+      const size = Array.isArray(item.sizes) ? item.sizes[0] : item.sizes;
+      if (!itemsByGroup[item.size_group_id]) itemsByGroup[item.size_group_id] = [];
+      if (size) itemsByGroup[item.size_group_id].push(size);
+    }
+
+    setGroups(groupsData.map((g) => ({
+      ...g,
+      sizes: itemsByGroup[g.id] || [],
+    })));
+  }, [supabase]);
 
   async function loadUpi() {
     const { data } = await supabase
@@ -159,98 +199,184 @@ export default function SettingsPage() {
     setUpiLoading(false);
   }
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
+  // ── Size Group CRUD ──
 
-    const { error } = await supabase.from("sizes").insert({
-      label: newLabel,
-      numeric_value: newNumeric ? parseFloat(newNumeric) : null,
+  async function handleAddGroup(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newGroupName.trim()) return;
+    setAddingGroup(true);
+
+    const maxSort = groups.reduce((max, g) => Math.max(max, g.sort_order), 0);
+    const { error } = await supabase.from("size_groups").insert({
+      name: newGroupName.trim().toUpperCase(),
+      sort_order: maxSort + 1,
     });
 
     if (error) {
-      if (error.code === "23505") {
-        toast.error("This size already exists");
-      } else {
-        toast.error("Failed to add size: " + error.message);
-      }
+      toast.error("Failed to add group: " + error.message);
     } else {
-      setNewLabel("");
-      setNewNumeric("");
-      await loadSizes();
+      setNewGroupName("");
+      toast.success("Group added");
+      await loadGroups();
     }
-    setLoading(false);
+    setAddingGroup(false);
   }
 
-  async function handleEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingSize) return;
-    setLoading(true);
-
+  async function handleRenameGroup(groupId: string) {
+    if (!editGroupName.trim()) return;
     const { error } = await supabase
-      .from("sizes")
-      .update({
-        label: newLabel,
-        numeric_value: newNumeric ? parseFloat(newNumeric) : null,
-      })
-      .eq("id", editingSize.id);
+      .from("size_groups")
+      .update({ name: editGroupName.trim().toUpperCase() })
+      .eq("id", groupId);
 
     if (error) {
-      if (error.code === "23505") {
-        toast.error("This size already exists");
-      } else {
-        toast.error("Failed to update size: " + error.message);
-      }
+      toast.error("Failed to rename: " + error.message);
     } else {
-      setEditingSize(null);
-      setNewLabel("");
-      setNewNumeric("");
-      await loadSizes();
+      setEditingGroup(null);
+      await loadGroups();
     }
-    setLoading(false);
   }
 
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    setDeleteLoading(true);
+  async function handleDeleteGroup() {
+    if (!deleteGroupTarget) return;
+    setDeleteGroupLoading(true);
 
+    // Deactivate prices using sizes in this group
+    for (const size of deleteGroupTarget.sizes) {
+      await supabase
+        .from("price_list")
+        .update({ is_active: false })
+        .eq("size_id", size.id)
+        .eq("is_active", true);
+    }
+
+    const { error } = await supabase.from("size_groups").delete().eq("id", deleteGroupTarget.id);
+
+    if (error) {
+      toast.error("Failed to delete group: " + error.message);
+    } else {
+      toast.success(`Group "${deleteGroupTarget.name}" deleted`);
+      setDeleteGroupTarget(null);
+      await loadGroups();
+    }
+    setDeleteGroupLoading(false);
+  }
+
+  // ── Size CRUD within groups ──
+
+  async function handleAddSizeToGroup(groupId: string) {
+    const label = sizeInputs[groupId]?.trim();
+    if (!label) return;
+    setAddingSizeTo(groupId);
+
+    // Check if a size with this label already exists
+    const { data: existing } = await supabase
+      .from("sizes")
+      .select("id")
+      .eq("label", label)
+      .limit(1)
+      .maybeSingle();
+
+    let sizeId: string;
+
+    if (existing) {
+      sizeId = existing.id;
+    } else {
+      // Create new size
+      const sortVal = sizeSortInputs[groupId] ? parseFloat(sizeSortInputs[groupId]) : null;
+      const { data: newSize, error: createErr } = await supabase
+        .from("sizes")
+        .insert({ label, numeric_value: sortVal })
+        .select("id")
+        .single();
+
+      if (createErr) {
+        toast.error("Failed to create size: " + createErr.message);
+        setAddingSizeTo(null);
+        return;
+      }
+      sizeId = newSize.id;
+    }
+
+    // Link to group
+    const groupSortOrder = (groups.find((g) => g.id === groupId)?.sizes.length || 0) + 1;
+    const { error: linkErr } = await supabase
+      .from("size_group_items")
+      .insert({ size_group_id: groupId, size_id: sizeId, sort_order: groupSortOrder });
+
+    if (linkErr) {
+      if (linkErr.code === "23505") {
+        toast.error("Size already in this group");
+      } else {
+        toast.error("Failed to link size: " + linkErr.message);
+      }
+    } else {
+      setSizeInputs((prev) => ({ ...prev, [groupId]: "" }));
+      setSizeSortInputs((prev) => ({ ...prev, [groupId]: "" }));
+      await loadGroups();
+    }
+    setAddingSizeTo(null);
+  }
+
+  async function handleRemoveSizeFromGroup(groupId: string, sizeId: string) {
+    const { error } = await supabase
+      .from("size_group_items")
+      .delete()
+      .eq("size_group_id", groupId)
+      .eq("size_id", sizeId);
+
+    if (error) {
+      toast.error("Failed to remove size: " + error.message);
+    } else {
+      await loadGroups();
+    }
+  }
+
+  async function handleDeleteSize() {
+    if (!deleteSizeTarget) return;
+    setDeleteSizeLoading(true);
+
+    // Deactivate all prices using this size
     await supabase
       .from("price_list")
       .update({ is_active: false })
-      .eq("size_id", deleteTarget.id)
+      .eq("size_id", deleteSizeTarget.size.id)
       .eq("is_active", true);
 
-    const { error } = await supabase.from("sizes").delete().eq("id", deleteTarget.id);
+    const { error } = await supabase.from("sizes").delete().eq("id", deleteSizeTarget.size.id);
 
     if (error) {
       toast.error("Failed to delete size: " + error.message);
     } else {
-      toast.success(`Size "${deleteTarget.label}" deleted`);
-      setDeleteTarget(null);
-      await loadSizes();
+      toast.success(`Size "${deleteSizeTarget.size.label}" deleted`);
+      setDeleteSizeTarget(null);
+      await loadGroups();
     }
-    setDeleteLoading(false);
+    setDeleteSizeLoading(false);
   }
 
-  async function openDeleteDialog(size: Size) {
-    setDeleteTarget(size);
+  async function openDeleteSizeDialog(size: Size) {
+    setDeleteSizeTarget({ size, groupName: "" });
     const { count } = await supabase
       .from("price_list")
       .select("id", { count: "exact", head: true })
       .eq("size_id", size.id)
       .eq("is_active", true);
-    setPriceCount(count || 0);
+    setDeleteSizePriceCount(count || 0);
   }
 
-  function openEditDialog(size: Size) {
-    setEditingSize(size);
-    setNewLabel(size.label);
-    setNewNumeric(size.numeric_value !== null ? String(size.numeric_value) : "");
+  function toggleGroup(groupId: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
   }
 
   /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
   useEffect(() => {
-    loadSizes();
+    loadGroups();
     loadUpi();
     loadTeam();
     loadShop();
@@ -268,90 +394,162 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {/* ── SIZE GROUPS ── */}
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
             <Settings className="h-5 w-5 inline mr-2" />
-            SIZES
+            SIZE GROUPS
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={editingSize ? handleEdit : handleAdd} className="flex gap-3">
+        <CardContent className="space-y-3">
+          <form onSubmit={handleAddGroup} className="flex gap-2">
             <Input
-              placeholder="SIZE LABEL (E.G. 28, M, L)"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="NEW GROUP NAME (E.G. FULL SHIRT, SHOES)"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
               required
               className="flex-1"
             />
-            <Input
-              type="number"
-              placeholder="SORT ORDER"
-              value={newNumeric}
-              onChange={(e) => setNewNumeric(e.target.value)}
-              className="w-24"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              className="shrink-0"
-              disabled={loading || !newLabel}
-            >
+            <Button type="submit" size="icon" className="shrink-0" disabled={addingGroup || !newGroupName.trim()}>
               <Plus className="h-4 w-4" />
             </Button>
-            {editingSize && (
-              <Button
-                type="button"
-                size="icon"
-                variant="tertiary"
-                className="shrink-0"
-                onClick={() => {
-                  setEditingSize(null);
-                  setNewLabel("");
-                  setNewNumeric("");
-                }}
-              >
-                <span>✕</span>
-              </Button>
-            )}
           </form>
 
-          <div className="space-y-2">
-            {sizes.map((size) => (
-              <div
-                key={size.id}
-                className="flex items-center justify-between rounded-[12px] border-2 border-black px-3 py-2"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
-                    {size.label}
-                  </span>
-                  {size.numeric_value !== null && (
-                    <span className="text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
-                      ORDER: {size.numeric_value}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openEditDialog(size)}
-                    className="text-[#4D8A6B] hover:text-[#0023D1]"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => openDeleteDialog(size)}
-                    className="text-[#4D8A6B] hover:text-[#C42424]"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+          {groups.length === 0 ? (
+            <p className="text-center py-6 text-[14px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+              NO GROUPS YET — CREATE ONE TO START
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {groups.map((group) => {
+                const isExpanded = expandedGroups.has(group.id);
+                return (
+                  <div key={group.id} className="rounded-[12px] border-2 border-black overflow-hidden">
+                    {/* Group header */}
+                    <div className="flex items-center justify-between bg-[#00592B] px-3 py-2.5">
+                      <button
+                        onClick={() => toggleGroup(group.id)}
+                        className="flex items-center gap-2 flex-1 text-left cursor-pointer"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-white shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-white shrink-0" />
+                        )}
+                        {editingGroup === group.id ? (
+                          <form
+                            onSubmit={(e) => { e.preventDefault(); handleRenameGroup(group.id); }}
+                            className="flex items-center gap-2 flex-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              autoFocus
+                              value={editGroupName}
+                              onChange={(e) => setEditGroupName(e.target.value)}
+                              onBlur={() => handleRenameGroup(group.id)}
+                              className="bg-white/10 text-white font-bold [font-family:var(--font-oswald)] uppercase text-[15px] px-2 py-0.5 rounded-[4px] outline-none border border-white/30 flex-1"
+                            />
+                          </form>
+                        ) : (
+                          <span className="font-bold text-white [font-family:var(--font-oswald)] uppercase text-[15px]">
+                            {group.name}
+                          </span>
+                        )}
+                        <span className="text-[12px] text-white/60 [font-family:var(--font-oswald)] font-bold">
+                          ({group.sizes.length})
+                        </span>
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingGroup(group.id); setEditGroupName(group.name); }}
+                          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-white/70 hover:text-white hover:bg-white/10 cursor-pointer"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteGroupTarget(group); }}
+                          className="flex h-8 w-8 items-center justify-center rounded-[8px] text-white/70 hover:text-[#E374C7] hover:bg-white/10 cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Group body — sizes list */}
+                    {isExpanded && (
+                      <div className="bg-white p-3 space-y-2">
+                        {/* Add size form */}
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="SIZE LABEL"
+                            value={sizeInputs[group.id] || ""}
+                            onChange={(e) => setSizeInputs((prev) => ({ ...prev, [group.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSizeToGroup(group.id); } }}
+                            className="flex-1 h-10"
+                          />
+                          <Input
+                            type="number"
+                            placeholder="SORT"
+                            value={sizeSortInputs[group.id] || ""}
+                            onChange={(e) => setSizeSortInputs((prev) => ({ ...prev, [group.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSizeToGroup(group.id); } }}
+                            className="w-20 h-10"
+                          />
+                          <Button
+                            onClick={() => handleAddSizeToGroup(group.id)}
+                            size="icon"
+                            className="shrink-0 h-10 w-10"
+                            disabled={addingSizeTo === group.id || !(sizeInputs[group.id] || "").trim()}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {/* Sizes list */}
+                        {group.sizes.length === 0 ? (
+                          <p className="text-center py-3 text-[13px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+                            NO SIZES IN THIS GROUP
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {group.sizes.map((size) => (
+                              <div
+                                key={size.id}
+                                className="flex items-center gap-1.5 rounded-[8px] border-2 border-[#00592B] bg-[#00592B]/5 px-2.5 py-1.5"
+                              >
+                                <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase text-[14px]">
+                                  {size.label}
+                                </span>
+                                <button
+                                  onClick={() => handleRemoveSizeFromGroup(group.id, size.id)}
+                                  className="text-[#4D8A6B] hover:text-[#C42424] cursor-pointer ml-0.5"
+                                  title="Remove from group"
+                                >
+                                  <span className="text-[12px] font-bold">×</span>
+                                </button>
+                                <button
+                                  onClick={() => openDeleteSizeDialog(size)}
+                                  className="text-[#4D8A6B] hover:text-[#C42424] cursor-pointer"
+                                  title="Delete size completely"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
+      {/* ── PAYMENT SETTINGS ── */}
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
@@ -380,6 +578,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* ── TEAM ── */}
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
@@ -430,6 +629,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* ── SHOP DETAILS ── */}
       <Card className="max-w-lg">
         <CardHeader>
           <CardTitle>
@@ -478,29 +678,63 @@ export default function SettingsPage() {
 
       <PrinterSection />
 
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setPriceCount(0); } }}>
+      {/* ── DELETE GROUP DIALOG ── */}
+      <Dialog open={!!deleteGroupTarget} onOpenChange={(open) => { if (!open) setDeleteGroupTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>DELETE SIZE GROUP</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-[14px] font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
+              Are you sure you want to delete group &quot;{deleteGroupTarget?.name}&quot;?
+            </p>
+            {deleteGroupTarget && deleteGroupTarget.sizes.length > 0 && (
+              <div className="rounded-[12px] border-2 border-[#C42424] bg-red-50 p-3">
+                <p className="text-[14px] font-bold text-[#C42424] [font-family:var(--font-oswald)] uppercase">
+                  WARNING: This group contains {deleteGroupTarget.sizes.length} size{deleteGroupTarget.sizes.length !== 1 ? "s" : ""}.
+                  All prices using these sizes will be deactivated.
+                </p>
+              </div>
+            )}
+            <div className="flex gap-3 justify-end">
+              <Button variant="tertiary" onClick={() => setDeleteGroupTarget(null)}>
+                <span>CANCEL</span>
+              </Button>
+              <Button variant="danger" onClick={handleDeleteGroup} disabled={deleteGroupLoading}>
+                <span>{deleteGroupLoading ? "DELETING..." : "DELETE"}</span>
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── DELETE SIZE DIALOG ── */}
+      <Dialog open={!!deleteSizeTarget} onOpenChange={(open) => { if (!open) { setDeleteSizeTarget(null); setDeleteSizePriceCount(0); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>DELETE SIZE</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-[14px] font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">
-              Are you sure you want to delete size &quot;{deleteTarget?.label}&quot;?
+              Are you sure you want to delete size &quot;{deleteSizeTarget?.size.label}&quot;?
             </p>
-            {priceCount > 0 && (
+            <p className="text-[12px] text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">
+              This will remove it from all groups it belongs to.
+            </p>
+            {deleteSizePriceCount > 0 && (
               <div className="rounded-[12px] border-2 border-[#C42424] bg-red-50 p-3">
                 <p className="text-[14px] font-bold text-[#C42424] [font-family:var(--font-oswald)] uppercase">
-                  WARNING: This size is used in {priceCount} price{priceCount !== 1 ? "s" : ""}.
-                  Deleting it will permanently remove those prices.
+                  WARNING: This size is used in {deleteSizePriceCount} price{deleteSizePriceCount !== 1 ? "s" : ""}.
+                  Those prices will be deactivated.
                 </p>
               </div>
             )}
             <div className="flex gap-3 justify-end">
-              <Button variant="tertiary" onClick={() => { setDeleteTarget(null); setPriceCount(0); }}>
+              <Button variant="tertiary" onClick={() => { setDeleteSizeTarget(null); setDeleteSizePriceCount(0); }}>
                 <span>CANCEL</span>
               </Button>
-              <Button variant="danger" onClick={confirmDelete} disabled={deleteLoading}>
-                <span>{deleteLoading ? "DELETING..." : "DELETE"}</span>
+              <Button variant="danger" onClick={handleDeleteSize} disabled={deleteSizeLoading}>
+                <span>{deleteSizeLoading ? "DELETING..." : "DELETE"}</span>
               </Button>
             </div>
           </div>

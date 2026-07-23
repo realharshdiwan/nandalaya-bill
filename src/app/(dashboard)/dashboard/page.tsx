@@ -68,8 +68,7 @@ export default function DashboardPage() {
         } else if (b.payment_method === "credit") {
           creditToday += b.total || 0;
         } else if (b.payment_method === "split" && b.payment_details) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (b.payment_details as any[]).forEach((p) => {
+          (b.payment_details as { method: string; amount: number }[]).forEach((p) => {
             if (p.method === "cash") cashToday += p.amount || 0;
             if (p.method === "upi") upiToday += p.amount || 0;
             if (p.method === "card") cardToday += p.amount || 0;

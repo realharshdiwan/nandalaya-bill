@@ -6,13 +6,42 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, CircleDollarSign } from "lucide-react";
 import { toast } from "sonner";
+import {
+  isPrinterConnected,
+  printReceipt,
+  generateReceipt,
+} from "@/lib/thermal-printer";
+
+interface BillItem {
+  product_name: string;
+  size_label: string | null;
+  qty: number;
+  price: number;
+  discount_amount: number;
+  subtotal: number;
+}
+
+interface BillData {
+  bill_number: string;
+  created_at: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  subtotal: number;
+  discount: number;
+  total: number;
+  payment_method: string;
+  notes: string | null;
+}
 
 interface Props {
   billId: string;
   isPaid: boolean;
+  billItems?: BillItem[];
+  billData?: BillData;
+  shopConfig?: Record<string, string>;
 }
 
-export default function MarkPaidButton({ billId, isPaid }: Props) {
+export default function MarkPaidButton({ billId, isPaid, billItems, billData, shopConfig }: Props) {
   const router = useRouter();
   const supabase = createClient();
   const [optimisticPaid, setOptimisticPaid] = useState(isPaid);
@@ -37,6 +66,19 @@ export default function MarkPaidButton({ billId, isPaid }: Props) {
       toast.error("Failed: " + error.message);
     } else {
       toast.success(newPaid ? "Payment received!" : "Marked as unpaid");
+
+      // Auto-print receipt when marking as paid
+      if (newPaid && billData && billItems && isPrinterConnected()) {
+        const receipt = generateReceipt(billData, billItems, shopConfig);
+        printReceipt(receipt, (msg) => {
+          if (msg) toast.info(msg);
+        }).then((ok) => {
+          if (ok) toast.success("Receipt printed!");
+        });
+      } else if (newPaid && !isPrinterConnected()) {
+        toast.info("Printer not connected. Tap THERMAL to print.");
+      }
+
       startTransition(() => {
         router.refresh();
       });

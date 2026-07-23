@@ -1,5 +1,4 @@
 // Web Bluetooth API type declarations
-// These are available in modern browsers but not in TypeScript's default lib
 
 interface BluetoothDevice {
   id: string;
@@ -12,7 +11,7 @@ interface BluetoothRemoteGATTServer {
   connected: boolean;
   connect(): Promise<BluetoothRemoteGATTServer>;
   disconnect(): void;
-  getPrimaryService(service: string): Promise<BluetoothGATTService>;
+  getPrimaryService(service: BluetoothServiceUUID): Promise<BluetoothGATTService>;
 }
 
 interface BluetoothGATTService {
@@ -24,9 +23,16 @@ interface BluetoothGATTService {
 interface BluetoothRemoteGATTCharacteristic {
   service: BluetoothGATTService;
   uuid: string;
-  properties: Record<string, boolean>;
+  properties: BluetoothCharacteristicProperties;
   writeValue(value: BufferSource): Promise<void>;
   readValue(): Promise<DataView>;
+}
+
+interface BluetoothCharacteristicProperties {
+  write: boolean;
+  writeWithoutResponse: boolean;
+  read: boolean;
+  notify: boolean;
 }
 
 interface BluetoothRequestOptions {
@@ -36,10 +42,16 @@ interface BluetoothRequestOptions {
     namePrefix?: string;
   }>;
   optionalServices?: string[];
+  acceptAllDevices?: boolean;
+}
+
+type BluetoothServiceUUID = string;
+
+interface Bluetooth {
+  requestDevice(options: BluetoothRequestOptions): Promise<BluetoothDevice>;
+  getDevices(): Promise<BluetoothDevice[]>;
 }
 
 interface Navigator {
-  bluetooth: {
-    requestDevice(options: BluetoothRequestOptions): Promise<BluetoothDevice>;
-  };
+  bluetooth: Bluetooth;
 }

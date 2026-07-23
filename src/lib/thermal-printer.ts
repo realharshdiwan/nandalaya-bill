@@ -1,11 +1,12 @@
 "use client";
 
-// ESC/POS commands for thermal printers
+import { amountToWords } from "@/lib/amount-to-words";
+
 const ESC = "\x1b";
 const GS = "\x1d";
 
 function initPrinter(): string {
-  return `${ESC}@`; // Initialize printer
+  return `${ESC}@`;
 }
 
 function setBold(on: boolean): string {
@@ -25,11 +26,11 @@ function alignLeft(): string {
 }
 
 function cutPaper(): string {
-  return `${GS}V\x01`; // Full cut
+  return `${GS}V\x01`;
 }
 
 function setCodepage(): string {
-  return `${ESC}t\x00`; // Use PC437 (USA) character set
+  return `${ESC}t\x00`;
 }
 
 interface BillItem {
@@ -50,6 +51,7 @@ interface BillData {
   discount: number;
   total: number;
   payment_method: string;
+  payment_details?: { method: string; amount: number }[] | null;
   notes: string | null;
 }
 
@@ -58,8 +60,6 @@ interface ShopConfig {
   shop_address?: string;
   shop_phone?: string;
   gstin?: string;
-  state_name?: string;
-  state_code?: string;
   shop_tagline?: string;
 }
 
@@ -73,11 +73,20 @@ function padLeft(str: string, len: number): string {
   return " ".repeat(len - str.length) + str;
 }
 
+export function getStoredLineWidth(): number {
+  if (typeof window === "undefined") return 48;
+  return parseInt(localStorage.getItem("nandalaya_printer_width") || "48", 10);
+}
+
+export function setStoredLineWidth(width: number) {
+  localStorage.setItem("nandalaya_printer_width", String(width));
+}
+
 export function generateReceipt(
   bill: BillData,
   items: BillItem[],
   shop?: ShopConfig,
-  lineWidth = 32
+  lineWidth = 48
 ): string {
   let receipt = "";
 
@@ -86,9 +95,10 @@ export function generateReceipt(
   receipt += alignCenter();
   receipt += setBold(true);
   receipt += setDoubleSize(true);
-  receipt += (shop?.legal_name || "NANDALAYA") + "\n";
+  receipt += "BILL OF SUPPLY\n";
   receipt += setDoubleSize(false);
   receipt += setBold(false);
+  receipt += (shop?.legal_name || "NANDALAYA") + "\n";
   receipt += (shop?.shop_tagline || "SCHOOL UNIFORMS & GARMENTS") + "\n";
   if (shop?.shop_address) {
     receipt += shop.shop_address + "\n";
@@ -101,7 +111,6 @@ export function generateReceipt(
   }
   receipt += "-".repeat(lineWidth) + "\n";
 
-  // Bill info
   receipt += alignLeft();
   receipt += `Bill: ${bill.bill_number}\n`;
 
@@ -126,71 +135,126 @@ export function generateReceipt(
 
   receipt += "-".repeat(lineWidth) + "\n";
 
-  // Items header
   receipt += setBold(true);
-  receipt += padRight("Item", 18) + padLeft("Qty", 4) + padLeft("Total", 8) + "\n";
+  const itemW = lineWidth - 12;
+  receipt += padRight("Item", itemW) + padLeft("Qty", 4) + padLeft("Total", 8) + "\n";
   receipt += setBold(false);
   receipt += "-".repeat(lineWidth) + "\n";
 
-  // Items
   for (const item of items) {
     const name = item.size_label
       ? `${item.product_name}(${item.size_label})`
       : item.product_name;
-    const truncatedName = name.length > 18 ? name.slice(0, 17) + "." : name;
+    const truncatedName = name.length > itemW ? name.slice(0, itemW - 1) + "." : name;
 
-    receipt += padRight(truncatedName, 18);
+    receipt += padRight(truncatedName, itemW);
     receipt += padLeft(String(item.qty), 4);
-    receipt += padLeft(`₹${item.subtotal}`, 8);
+    receipt += padLeft(`\u20b9${item.subtotal}`, 8);
     receipt += "\n";
 
-    receipt += `  @₹${item.price}`;
+    receipt += `  @\u20b9${item.price}`;
     if (item.discount_amount > 0) {
-      receipt += ` (-₹${item.discount_amount})`;
+      receipt += ` (-\u20b9${item.discount_amount})`;
     }
     receipt += "\n";
   }
 
   receipt += "-".repeat(lineWidth) + "\n";
 
-  // Totals
-  receipt += padRight("Subtotal:", 22) + padLeft(`₹${bill.subtotal}`, 10) + "\n";
+  receipt += padRight("Subtotal:", 22) + padLeft(`\u20b9${bill.subtotal}`, 10) + "\n";
   if (bill.discount > 0) {
-    receipt += padRight("Discount:", 22) + padLeft(`-₹${bill.discount}`, 10) + "\n";
+    receipt += padRight("Discount:", 22) + padLeft(`-\u20b9${bill.discount}`, 10) + "\n";
   }
 
   receipt += setBold(true);
   receipt += setDoubleSize(true);
-  receipt += padRight("TOTAL:", 22) + padLeft(`₹${bill.total}`, 10) + "\n";
+  receipt += padRight("TOTAL:", 22) + padLeft(`\u20b9${bill.total}`, 10) + "\n";
   receipt += setDoubleSize(false);
   receipt += setBold(false);
 
   receipt += "-".repeat(lineWidth) + "\n";
 
-  // Payment
-  receipt += `Payment: ${bill.payment_method.toUpperCase()}\n`;
+  // Payment — show breakdown if split
+  const details = bill.payment_details;
+  if (details && details.length > 1) {
+    for (const p of details) {
+      receipt += `${p.method.toUpperCase()}     \u20b9${p.amount}\n`;
+    }
+  } else {
+    receipt += `Payment: ${bill.payment_method.toUpperCase()}\n`;
+  }
 
   if (bill.notes) {
     receipt += "\nNotes:\n" + bill.notes + "\n";
   }
 
   receipt += "\n";
+  receipt += alignLeft();
+  receipt += "Amount in words:\n";
+  receipt += setBold(true);
+  receipt += amountToWords(bill.total) + "\n";
+  receipt += setBold(false);
+
+  receipt += "-".repeat(lineWidth) + "\n";
+
   receipt += alignCenter();
   receipt += "THANK YOU!\n";
-  receipt += "\n\n\n";
+  receipt += "\n";
+  receipt += alignLeft();
+  receipt += "Auth. Sign: __________________\n";
+  receipt += "\n\n";
 
   receipt += cutPaper();
 
   return receipt;
 }
 
-// Bluetooth connection and printing
-// Web Bluetooth types are available globally in modern browsers
-// but TypeScript needs the DOM.Iterable types or manual declarations
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let device: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let characteristic: any = null;
+let device: BluetoothDevice | null = null;
+let characteristic: BluetoothRemoteGATTCharacteristic | null = null;
+let reconnectAttempted = false;
+
+export async function tryReconnect(onStatus?: (msg: string) => void): Promise<boolean> {
+  if (reconnectAttempted) return isPrinterConnected();
+  reconnectAttempted = true;
+
+  if (!navigator.bluetooth) return false;
+
+  try {
+    const devices = await navigator.bluetooth.getDevices();
+    if (devices.length === 0) return false;
+
+    for (const d of devices) {
+      try {
+        device = d;
+        const server = await d.gatt?.connect();
+        if (!server) continue;
+
+        for (const uuid of [
+          "000018f0-0000-1000-8000-00805f9b34fb",
+          "0000fee7-0000-1000-8000-00805f9b34fb",
+        ]) {
+          try {
+            const service = await server.getPrimaryService(uuid);
+            const chars = await service.getCharacteristics();
+            const writeChar = chars.find((c) => c.properties.write);
+            if (writeChar) {
+              characteristic = writeChar;
+              onStatus?.(`Reconnected to ${d.name || "printer"}`);
+              return true;
+            }
+          } catch {
+            // Try next UUID
+          }
+        }
+      } catch {
+        // Try next device
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export async function connectToPrinter(
   onStatus?: (msg: string) => void
@@ -205,7 +269,7 @@ export async function connectToPrinter(
 
     device = await navigator.bluetooth.requestDevice({
       filters: [
-        { services: ["000018f0-0000-1000-8000-00805f9b34fb"] }, // Common thermal printer service
+        { services: ["000018f0-0000-1000-8000-00805f9b34fb"] },
       ],
       optionalServices: [
         "000018f0-0000-1000-8000-00805f9b34fb",
@@ -221,7 +285,6 @@ export async function connectToPrinter(
       return false;
     }
 
-    // Try common service UUIDs for thermal printers
     let service: BluetoothGATTService | null = null;
     const serviceUUIDs = [
       "000018f0-0000-1000-8000-00805f9b34fb",
@@ -242,7 +305,6 @@ export async function connectToPrinter(
       return false;
     }
 
-    // Get write characteristic
     const characteristics = await service.getCharacteristics();
     characteristic = characteristics.find((c) => c.properties.write) || null;
 
@@ -283,11 +345,9 @@ export async function printReceipt(
   try {
     onStatus?.("Printing...");
 
-    // Encode text to bytes
     const encoder = new TextEncoder();
     const data = encoder.encode(receiptText);
 
-    // Write in chunks (BLE has max write size)
     const CHUNK_SIZE = 200;
     for (let i = 0; i < data.length; i += CHUNK_SIZE) {
       const chunk = data.slice(i, i + CHUNK_SIZE);
@@ -296,6 +356,44 @@ export async function printReceipt(
 
     onStatus?.("Printed!");
     return true;
+  } catch (error) {
+    onStatus?.(`Print failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    return false;
+  }
+}
+
+export async function printBillById(
+  billId: string,
+  onStatus?: (msg: string) => void
+): Promise<boolean> {
+  try {
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+
+    const [billRes, itemsRes, configRes] = await Promise.all([
+      supabase.from("bills").select("*").eq("id", billId).single(),
+      supabase.from("bill_items").select("*").eq("bill_id", billId).order("created_at"),
+      supabase.from("shop_config").select("key, value"),
+    ]);
+
+    if (billRes.error || !billRes.data) {
+      onStatus?.("Could not load bill");
+      return false;
+    }
+
+    const bill = billRes.data;
+    const items = (itemsRes.data || []).map((item) => ({
+      product_name: item.product_name,
+      size_label: item.size_label,
+      qty: item.qty,
+      price: item.price,
+      discount_amount: item.discount_amount,
+      subtotal: item.subtotal,
+    }));
+    const shopConfig = Object.fromEntries((configRes.data || []).map((r: { key: string; value: string }) => [r.key, r.value]));
+
+    const receipt = generateReceipt(bill, items, shopConfig);
+    return printReceipt(receipt, onStatus);
   } catch (error) {
     onStatus?.(`Print failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     return false;

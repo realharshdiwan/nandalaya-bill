@@ -78,16 +78,26 @@ export default function HomePage() {
       })
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    pricesRes.data?.forEach((p: any) =>
+    interface SearchResultPrice {
+      id: string;
+      price: number;
+      schools: { name: string; short_code: string | null }[] | { name: string; short_code: string | null };
+      products: { name: string }[] | { name: string };
+      sizes: { label: string }[] | { label: string };
+    }
+
+    pricesRes.data?.forEach((p: SearchResultPrice) => {
+      const school = Array.isArray(p.schools) ? p.schools[0] : p.schools;
+      const product = Array.isArray(p.products) ? p.products[0] : p.products;
+      const size = Array.isArray(p.sizes) ? p.sizes[0] : p.sizes;
       searchResults.push({
         type: "price",
         id: p.id,
-        title: `${p.schools?.short_code || p.schools?.name} — ${p.products?.name} (${p.sizes?.label})`,
+        title: `${school?.short_code || school?.name} — ${product?.name} (${size?.label})`,
         subtitle: `₹${p.price}`,
         price: p.price,
-      })
-    );
+      });
+    });
 
     setResults(searchResults);
     setLoading(false);

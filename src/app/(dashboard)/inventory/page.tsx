@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ import { toast } from "sonner";
 interface Product {
   id: string;
   name: string;
+  size_group_id: string | null;
 }
 
 interface Size {
@@ -81,39 +82,86 @@ export default function InventoryPage() {
   const [formNotes, setFormNotes] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const loadSizesForProduct = useCallback(async (productId: string) => {
+    if (!productId) { setSizes([]); return; }
+    const product = products.find((p) => p.id === productId);
+    if (!product?.size_group_id) { setSizes([]); return; }
+    const { data } = await supabase
+      .from("size_group_items")
+      .select("sizes(id, label)")
+      .eq("size_group_id", product.size_group_id)
+      .order("sort_order");
+    const resolved = (data || []).map((row) => {
+      const s = Array.isArray(row.sizes) ? row.sizes[0] : row.sizes;
+      return { id: s?.id || "", label: s?.label || "" };
+    }).filter((s) => s.id);
+    setSizes(resolved);
+  }, [products, supabase]);
+
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (formProduct) {
+      loadSizesForProduct(formProduct);
+    } else {
+      setSizes([]);
+    }
+    setFormSize("");
+  }, [formProduct, loadSizesForProduct]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   async function loadData() {
-    const [productsRes, sizesRes, suppliersRes, stockRes, logRes] = await Promise.all([
-      supabase.from("products").select("id, name").order("name"),
-      supabase.from("sizes").select("id, label").order("numeric_value"),
+    const [productsRes, suppliersRes, stockRes, logRes] = await Promise.all([
+      supabase.from("products").select("id, name, size_group_id").order("name"),
       supabase.from("suppliers").select("id, name").order("name"),
       supabase.from("current_stock").select("*"),
       supabase.from("inventory").select("*, products(name), sizes(label), suppliers(name)").order("created_at", { ascending: false }).limit(50),
     ]);
 
     setProducts(productsRes.data || []);
-    setSizes(sizesRes.data || []);
     setSuppliers(suppliersRes.data || []);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stockData = (stockRes.data || []).map((s: any) => ({
+    interface RawStockRow {
+      product_id: string;
+      size_id: string;
+      total_quantity: number;
+      total_value: number;
+    }
+
+    const stockData = (stockRes.data || []).map((s: RawStockRow) => ({
       ...s,
       product_name: productsRes.data?.find((p) => p.id === s.product_id)?.name || "Unknown",
-      size_label: sizesRes.data?.find((sz) => sz.id === s.size_id)?.label || "",
+      size_label: "",
     }));
     setStock(stockData);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const logData = (logRes.data || []).map((l: any) => ({
-      ...l,
-      product_name: l.products?.name || "Unknown",
-      size_label: l.sizes?.label || "",
-      supplier_name: l.suppliers?.name || "",
-    }));
+    interface RawInventoryLog {
+      id: string;
+      quantity: number;
+      purchase_price: number | null;
+      entry_type: string;
+      notes: string | null;
+      created_at: string;
+      products: { name: string }[] | { name: string };
+      sizes: { label: string }[] | { label: string };
+      suppliers: { name: string }[] | { name: string };
+    }
+
+    const logData = (logRes.data || []).map((l: RawInventoryLog) => {
+      const product = Array.isArray(l.products) ? l.products[0] : l.products;
+      const size = Array.isArray(l.sizes) ? l.sizes[0] : l.sizes;
+      const supplier = Array.isArray(l.suppliers) ? l.suppliers[0] : l.suppliers;
+      return {
+        ...l,
+        product_name: product?.name || "Unknown",
+        size_label: size?.label || "",
+        supplier_name: supplier?.name || "",
+      };
+    });
     setLog(logData);
   }
 

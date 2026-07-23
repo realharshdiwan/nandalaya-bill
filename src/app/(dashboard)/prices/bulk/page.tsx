@@ -24,6 +24,13 @@ interface School {
 interface Product {
   id: string;
   name: string;
+  size_group_id: string | null;
+}
+
+interface SizeGroup {
+  id: string;
+  name: string;
+  sizes: Size[];
 }
 
 interface Size {
@@ -38,23 +45,38 @@ export default function BulkPricePage() {
 
   const [schools, setSchools] = useState<School[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [sizes, setSizes] = useState<Size[]>([]);
+  const [sizeGroups, setSizeGroups] = useState<SizeGroup[]>([]);
   const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
   // matrix[productId][sizeId|"__no_size__"] = price string
   const [matrix, setMatrix] = useState<Record<string, Record<string, string>>>({});
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  // Flat list of all sizes across all groups (for matrix key iteration)
+  const allSizes = sizeGroups.flatMap((g) => g.sizes);
+
   useEffect(() => {
     async function load() {
-      const [schoolsRes, productsRes, sizesRes] = await Promise.all([
+      const [schoolsRes, productsRes, groupsRes, groupItemsRes] = await Promise.all([
         supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name").order("sort_order").order("name"),
-        supabase.from("sizes").select("id, label, numeric_value").order("numeric_value"),
+        supabase.from("products").select("id, name, size_group_id").order("sort_order").order("name"),
+        supabase.from("size_groups").select("id, name").order("sort_order"),
+        supabase.from("size_group_items").select("size_group_id, sizes(id, label, numeric_value)").order("sort_order"),
       ]);
       setSchools(schoolsRes.data || []);
       setProducts(productsRes.data || []);
-      setSizes(sizesRes.data || []);
+
+      const itemsByGroup: Record<string, Size[]> = {};
+      for (const item of groupItemsRes.data || []) {
+        const size = Array.isArray(item.sizes) ? item.sizes[0] : item.sizes;
+        if (!itemsByGroup[item.size_group_id]) itemsByGroup[item.size_group_id] = [];
+        if (size) itemsByGroup[item.size_group_id].push(size);
+      }
+
+      setSizeGroups((groupsRes.data || []).map((g) => ({
+        ...g,
+        sizes: itemsByGroup[g.id] || [],
+      })));
       setLoaded(true);
     }
     load();
@@ -80,7 +102,7 @@ export default function BulkPricePage() {
       const m: Record<string, Record<string, string>> = {};
       products.forEach((p) => {
         m[p.id] = {};
-        sizes.forEach((s) => {
+        allSizes.forEach((s) => {
           const existing = prices.find(
             (ep) => ep.product_id === p.id && ep.size_id === s.id
           );
@@ -95,7 +117,7 @@ export default function BulkPricePage() {
       setMatrix(m);
     }
     loadPrices();
-  }, [selectedSchools, products, sizes, supabase]);
+  }, [selectedSchools, products, allSizes, supabase]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   function toggleSchool(schoolId: string) {
@@ -144,7 +166,7 @@ export default function BulkPricePage() {
 
       for (const schoolId of selectedSchools) {
         for (const product of products) {
-          for (const size of sizes) {
+          for (const size of allSizes) {
             const value = matrix[product.id]?.[size.id];
             const price = value ? parseFloat(value) : null;
             if (price !== null && price > 0) {
@@ -232,7 +254,11 @@ export default function BulkPricePage() {
     return count + Object.values(row).filter((v) => v && parseFloat(v) > 0).length;
   }, 0);
 
-  const totalCells = products.length * (sizes.length + 1); // +1 for NO SIZE column
+  const totalCells = products.length * (allSizes.length + 1); // +1 for NO SIZE column
+
+  // Find which size groups are used by the current products
+  const activeGroupIds = [...new Set(products.map((p) => p.size_group_id).filter(Boolean))] as string[];
+  const activeGroups = sizeGroups.filter((g) => activeGroupIds.includes(g.id));
 
   if (!loaded) {
     return (
@@ -323,15 +349,30 @@ export default function BulkPricePage() {
           <div className="overflow-x-auto">
             <table className="w-full text-[14px] border-collapse">
               <thead>
+                {/* Group headers row */}
+                <tr>
+                  <th className="text-left pb-1 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold bg-[#00592B] sticky left-0 z-10" colSpan={1}>
+                  </th>
+                  {activeGroups.map((group) => (
+                    <th key={group.id} className="text-center pb-1 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold border-b border-[#E374C7]/30" colSpan={group.sizes.length}>
+                      {group.name}
+                    </th>
+                  ))}
+                  <th className="text-center pb-1 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold border-l-2 border-[#4D8A6B]" colSpan={1}>
+                  </th>
+                </tr>
+                {/* Size labels row */}
                 <tr>
                   <th className="text-left pb-3 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold bg-[#00592B] sticky left-0 z-10">
                     PRODUCT
                   </th>
-                  {sizes.map((size) => (
-                    <th key={size.id} className="text-center pb-3 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold min-w-[100px]">
-                      {size.label}
-                    </th>
-                  ))}
+                  {activeGroups.map((group) =>
+                    group.sizes.map((size) => (
+                      <th key={size.id} className="text-center pb-3 text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold min-w-[80px]">
+                        {size.label}
+                      </th>
+                    ))
+                  )}
                   <th className="text-center pb-3 text-[#E374C7] [font-family:var(--font-oswald)] uppercase font-bold min-w-[100px] border-l-2 border-[#4D8A6B]">
                     NO SIZE
                   </th>
@@ -343,19 +384,21 @@ export default function BulkPricePage() {
                     <td className="py-2 pr-4 font-bold text-white [font-family:var(--font-oswald)] uppercase sticky left-0 bg-[#00592B] z-10">
                       {product.name}
                     </td>
-                    {sizes.map((size) => (
-                      <td key={size.id} className="py-2 px-1">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="₹"
-                          value={matrix[product.id]?.[size.id] || ""}
-                          onChange={(e) => updateCell(product.id, size.id, e.target.value)}
-                          className="w-full text-center h-11 text-[14px]"
-                        />
-                      </td>
-                    ))}
+                    {activeGroups.map((group) =>
+                      group.sizes.map((size) => (
+                        <td key={size.id} className="py-2 px-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="₹"
+                            value={matrix[product.id]?.[size.id] || ""}
+                            onChange={(e) => updateCell(product.id, size.id, e.target.value)}
+                            className="w-full text-center h-11 text-[14px]"
+                          />
+                        </td>
+                      ))
+                    )}
                     <td className="py-2 px-1 border-l-2 border-[#4D8A6B]">
                       <Input
                         type="number"
