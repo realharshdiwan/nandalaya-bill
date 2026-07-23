@@ -38,7 +38,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b-4 border-black bg-[#00592B] px-4 md:hidden">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="flex h-11 w-11 items-center justify-center rounded-[12px] border-2 border-black bg-white text-[#00592B]"
+          className="flex h-11 w-11 items-center justify-center rounded-[12px] border-2 border-black bg-white text-[#00592B] active:bg-gray-100 cursor-pointer touch-manipulation"
         >
           <Menu className="h-5 w-5" />
         </button>
