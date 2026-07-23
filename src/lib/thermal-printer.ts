@@ -150,11 +150,11 @@ export function generateReceipt(
   // ── ITEMS ──
   receipt += setBold(true);
   const columns = isNarrow
-    ? { itemW: lineWidth - 8, qtyW: 3, amtW: 5 }
+    ? { itemW: 21, qtyW: 3, amtW: 8 }
     : { itemW: lineWidth - 12, qtyW: 4, amtW: 8 };
   receipt += padRight("Item", columns.itemW)
     + padLeft("Qty", columns.qtyW)
-    + padLeft(isNarrow ? "Amt" : "Total", columns.amtW) + "\n";
+    + padLeft("Amt", columns.amtW) + "\n";
   receipt += setBold(false);
   receipt += "-".repeat(lineWidth) + "\n";
 
@@ -168,40 +168,30 @@ export function generateReceipt(
 
     receipt += padRight(truncatedName, columns.itemW);
     receipt += padLeft(String(item.qty), columns.qtyW);
-    receipt += padLeft(`\u20b9${item.subtotal}`, columns.amtW);
+    receipt += padLeft(`Rs${item.subtotal}`, columns.amtW);
     receipt += "\n";
 
-    if (isNarrow) {
-      receipt += `\u20b9${item.price}`;
-      if (item.discount_amount > 0) {
-        receipt += ` -\u20b9${item.discount_amount}`;
-      }
-      receipt += "\n";
-    } else {
-      receipt += `  @\u20b9${item.price}`;
-      if (item.discount_amount > 0) {
-        receipt += ` (-\u20b9${item.discount_amount})`;
-      }
-      receipt += "\n";
+    receipt += `  @Rs${item.price}`;
+    if (item.discount_amount > 0) {
+      receipt += ` (-Rs${item.discount_amount})`;
     }
+    receipt += "\n";
   }
 
   receipt += "-".repeat(lineWidth) + "\n";
 
   // ── TOTALS ──
-  const totalLabelW = isNarrow ? 14 : 22;
-  const totalValW = isNarrow ? 6 : 10;
+  const totalLabelW = 22;
+  const totalValW = 10;
 
-  receipt += padRight("Subtotal:", totalLabelW) + padLeft(`\u20b9${bill.subtotal}`, totalValW) + "\n";
+  receipt += padRight("Subtotal:", totalLabelW) + padLeft(`Rs${bill.subtotal}`, totalValW) + "\n";
   if (bill.discount > 0) {
-    receipt += padRight("Discount:", totalLabelW) + padLeft(`-\u20b9${bill.discount}`, totalValW) + "\n";
+    receipt += padRight("Discount:", totalLabelW) + padLeft(`-Rs${bill.discount}`, totalValW) + "\n";
   }
 
   receipt += setBold(true);
-  if (!isNarrow) {
-    receipt += setDoubleSize(true);
-  }
-  receipt += padRight("TOTAL:", totalLabelW) + padLeft(`\u20b9${bill.total}`, totalValW) + "\n";
+  receipt += setDoubleSize(true);
+  receipt += padRight("TOTAL:", totalLabelW) + padLeft(`Rs${bill.total}`, totalValW) + "\n";
   receipt += setDoubleSize(false);
   receipt += setBold(false);
 
@@ -211,7 +201,7 @@ export function generateReceipt(
   const details = bill.payment_details;
   if (details && details.length > 1) {
     for (const p of details) {
-      receipt += `${p.method.toUpperCase()}     \u20b9${p.amount}\n`;
+      receipt += `${p.method.toUpperCase()}     Rs${p.amount}\n`;
     }
   } else {
     receipt += `Payment: ${bill.payment_method.toUpperCase()}\n`;
@@ -224,19 +214,9 @@ export function generateReceipt(
   // ── AMOUNT IN WORDS ──
   receipt += "\n";
   receipt += alignLeft();
-  if (!isNarrow) {
-    receipt += "Amount in words:\n";
-  }
+  receipt += "Amount in words:\n";
   receipt += setBold(true);
-
-  if (isNarrow) {
-    receipt += `Rs. ${bill.total} `;
-    const words = amountToWords(bill.total).replace(" RUPEES ONLY", "").replace(" RUPEES AND ", " & ");
-    receipt += `(${words})\n`;
-  } else {
-    receipt += amountToWords(bill.total) + "\n";
-  }
-
+  receipt += amountToWords(bill.total).replace(" RUPEES ONLY", " ONLY").replace(" RUPEES AND ", " & ") + "\n";
   receipt += setBold(false);
 
   receipt += "-".repeat(lineWidth) + "\n";
