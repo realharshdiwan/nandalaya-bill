@@ -7,7 +7,7 @@ import { Menu, ShoppingCart } from "lucide-react";
 import { getCartCount, getCartTotal } from "@/lib/cart";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
   const [cartCount, setCartCount] = useState(0);
@@ -16,6 +16,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const refreshCart = useCallback(() => {
     setCartCount(getCartCount());
     setCartTotal(getCartTotal());
+  }, []);
+
+  useEffect(() => {
+    setSidebarOpen(window.innerWidth >= 768);
   }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -34,10 +38,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-[#00592B]">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Mobile header */}
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b-4 border-black bg-[#00592B] px-4 md:hidden">
+      {/* Header */}
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b-4 border-black bg-[#00592B] px-4">
         <button
-          onClick={() => setSidebarOpen(true)}
+          onClick={() => setSidebarOpen((prev) => !prev)}
           className="flex h-11 w-11 items-center justify-center rounded-[12px] border-2 border-black bg-white text-[#00592B] active:bg-gray-100 cursor-pointer touch-manipulation"
         >
           <Menu className="h-5 w-5" />
@@ -52,7 +56,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="md:pl-[288px]">
+      <main className={sidebarOpen ? "md:pl-[288px]" : ""}>
         <div className="mx-auto max-w-[1280px] px-4 py-4 lg:px-8 lg:py-8">
           {children}
         </div>

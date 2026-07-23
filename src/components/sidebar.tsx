@@ -66,7 +66,7 @@ export function Sidebar({
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-black/50"
           onClick={onClose}
         />
       )}
@@ -75,7 +75,6 @@ export function Sidebar({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-[288px] flex-col border-r-4 border-black bg-white transition-transform duration-200",
-          "md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
