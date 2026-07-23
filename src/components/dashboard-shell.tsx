@@ -39,7 +39,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Header */}
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b-4 border-black bg-[#00592B] px-4">
+      <header className="sticky top-0 z-[60] flex h-14 items-center gap-3 border-b-4 border-black bg-[#00592B] px-4">
         <button
           onClick={() => setSidebarOpen((prev) => !prev)}
           className="flex h-11 w-11 items-center justify-center rounded-[12px] border-2 border-black bg-white text-[#00592B] active:bg-gray-100 cursor-pointer touch-manipulation"
