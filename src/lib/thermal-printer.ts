@@ -103,9 +103,7 @@ export function generateReceipt(
     receipt += "BILL OF SUPPLY\n";
     receipt += setDoubleSize(false);
   } else {
-    receipt += setDoubleSize(true);
-    receipt += "BILL\n";
-    receipt += setDoubleSize(false);
+    receipt += "BILL OF SUPPLY\n";
   }
 
   receipt += (shop?.legal_name || "NANDALAYA") + "\n";
