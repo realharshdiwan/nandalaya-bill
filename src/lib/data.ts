@@ -19,98 +19,93 @@ export function onOnline(callback: () => void) {
 // ── Schools ──
 
 export async function getSchools(): Promise<School[]> {
-  const cached = await db.schools.toArray();
-  const active = cached.filter((s) => s.is_active);
-  if (active.length > 0) return active.sort((a, b) => a.name.localeCompare(b.name));
-
-  const supabase = createClient();
-  const { data } = await supabase.from("schools").select("*").eq("is_active", true).order("name");
-  if (data) {
-    await db.schools.bulkAdd(data as any[]);
-    return data as School[];
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const { data } = await supabase.from("schools").select("*").eq("is_active", true).order("name");
+    if (data) {
+      await db.schools.clear();
+      await db.schools.bulkAdd(data as any[]);
+      return data as School[];
+    }
   }
-  return [];
+  const cached = await db.schools.toArray();
+  return cached.filter((s) => s.is_active).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getSchool(id: string): Promise<School | null> {
-  const cached = await db.schools.get(id);
-  if (cached) return cached;
-
-  const supabase = createClient();
-  const { data } = await supabase.from("schools").select("*").eq("id", id).single();
-  if (data) {
-    await db.schools.put(data as any);
-    return data as School;
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const { data } = await supabase.from("schools").select("*").eq("id", id).single();
+    if (data) {
+      await db.schools.put(data as any);
+      return data as School;
+    }
   }
-  return null;
+  return (await db.schools.get(id)) || null;
 }
 
 // ── Products ──
 
 export async function getProducts(): Promise<Product[]> {
-  const cached = await db.products.toArray();
-  if (cached.length > 0) return cached;
-
-  const supabase = createClient();
-  const { data } = await supabase.from("products").select("*").order("sort_order").order("name");
-  if (data) {
-    await db.products.bulkAdd(data as any[]);
-    return data as Product[];
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const { data } = await supabase.from("products").select("*").order("sort_order").order("name");
+    if (data) {
+      await db.products.clear();
+      await db.products.bulkAdd(data as any[]);
+      return data as Product[];
+    }
   }
-  return [];
+  return db.products.toArray();
 }
 
 // ── Sizes ──
 
 export async function getSizes(): Promise<Size[]> {
-  const cached = await db.sizes.toArray();
-  if (cached.length > 0) return cached;
-
-  const supabase = createClient();
-  const { data } = await supabase.from("sizes").select("*");
-  if (data) {
-    await db.sizes.bulkAdd(data as any[]);
-    return data as Size[];
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const { data } = await supabase.from("sizes").select("*");
+    if (data) {
+      await db.sizes.clear();
+      await db.sizes.bulkAdd(data as any[]);
+      return data as Size[];
+    }
   }
-  return [];
+  return db.sizes.toArray();
 }
 
 export async function getSizeGroups(): Promise<SizeGroup[]> {
-  const cached = await db.size_groups.toArray();
-  const items = await db.size_group_items.toArray();
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const [groupsRes, itemsRes, sizesRes] = await Promise.all([
+      supabase.from("size_groups").select("*").order("sort_order"),
+      supabase.from("size_group_items").select("size_group_id, size_id, sort_order").order("sort_order"),
+      supabase.from("sizes").select("*"),
+    ]);
 
-  if (cached.length > 0 && items.length > 0) {
-    const sizes = await db.sizes.toArray();
-    return cached.map((g) => ({
+    if (groupsRes.data) { await db.size_groups.clear(); await db.size_groups.bulkAdd(groupsRes.data as any[]); }
+    if (itemsRes.data) { await db.size_group_items.clear(); await db.size_group_items.bulkAdd(itemsRes.data as any[]); }
+    if (sizesRes.data) { await db.sizes.clear(); await db.sizes.bulkAdd(sizesRes.data as any[]); }
+
+    const allSizes = (sizesRes.data || []) as Size[];
+    return ((groupsRes.data || []) as any[]).map((g) => ({
       ...g,
-      sizes: items
-        .filter((i) => i.size_group_id === g.id)
-        .map((i) => sizes.find((s) => s.id === i.size_id))
+      sizes: ((itemsRes.data || []) as any[])
+        .filter((i: any) => i.size_group_id === g.id)
+        .map((i: any) => allSizes.find((s) => s.id === i.size_id))
         .filter(Boolean) as Size[],
     }));
   }
 
-  const supabase = createClient();
-  const [groupsRes, itemsRes, sizesRes] = await Promise.all([
-    supabase.from("size_groups").select("*").order("sort_order"),
-    supabase.from("size_group_items").select("size_group_id, size_id, sort_order").order("sort_order"),
-    supabase.from("sizes").select("*"),
-  ]);
-
-  if (groupsRes.data) await db.size_groups.clear();
-  if (itemsRes.data) await db.size_group_items.clear();
-  if (sizesRes.data) await db.sizes.clear();
-
-  if (groupsRes.data) await db.size_groups.bulkAdd(groupsRes.data as any[]);
-  if (itemsRes.data) await db.size_group_items.bulkAdd(itemsRes.data as any[]);
-  if (sizesRes.data) await db.sizes.bulkAdd(sizesRes.data as any[]);
-
-  const allSizes = (sizesRes.data || []) as Size[];
-  return ((groupsRes.data || []) as any[]).map((g) => ({
+  const cached = await db.size_groups.toArray();
+  const items = await db.size_group_items.toArray();
+  if (cached.length === 0) return [];
+  const sizes = await db.sizes.toArray();
+  return cached.map((g) => ({
     ...g,
-    sizes: ((itemsRes.data || []) as any[])
-      .filter((i: any) => i.size_group_id === g.id)
-      .map((i: any) => allSizes.find((s) => s.id === i.size_id))
+    sizes: items
+      .filter((i) => i.size_group_id === g.id)
+      .map((i) => sizes.find((s) => s.id === i.size_id))
       .filter(Boolean) as Size[],
   }));
 }
@@ -135,7 +130,9 @@ async function enrichPrices(prices: PriceEntry[]) {
 }
 
 export async function getPricesForSchool(schoolId: string) {
-  await syncPriceListForSchool(schoolId);
+  if (navigator.onLine) {
+    await syncPriceListForSchool(schoolId);
+  }
 
   const schoolPrices = await db.price_list
     .where("school_id")
@@ -158,7 +155,9 @@ export async function getPricesForSchool(schoolId: string) {
 }
 
 export async function getPricesForGroup(groupId: string) {
-  await syncPricesForGroup(groupId);
+  if (navigator.onLine) {
+    await syncPricesForGroup(groupId);
+  }
   const prices = await db.price_list.where("school_group_id").equals(groupId).toArray();
   return enrichPrices(prices);
 }
@@ -191,43 +190,41 @@ export async function createBill(bill: any, items: any[]) {
 }
 
 export async function getBills(options?: { limit?: number; schoolId?: string }) {
-  let query = db.bills.orderBy("created_at").reverse();
+  if (navigator.onLine) {
+    const supabase = createClient();
+    let supabaseQuery = supabase
+      .from("bills")
+      .select("*, bill_items(*)")
+      .order("created_at", { ascending: false })
+      .limit(options?.limit || 50);
 
-  const cached = await query.limit(options?.limit || 50).toArray();
-  const filtered = options?.schoolId
-    ? cached.filter((b) => b.school_id === options.schoolId)
-    : cached;
-
-  if (filtered.length > 0) return filtered;
-
-  const supabase = createClient();
-  let supabaseQuery = supabase
-    .from("bills")
-    .select("*, bill_items(*)")
-    .order("created_at", { ascending: false })
-    .limit(options?.limit || 50);
-
-  if (options?.schoolId) {
-    supabaseQuery = supabaseQuery.eq("school_id", options.schoolId);
-  }
-
-  const { data } = await supabaseQuery;
-  if (data) {
-    const bills: any[] = [];
-    const items: any[] = [];
-    for (const row of data) {
-      const itemRows = Array.isArray(row.bill_items) ? row.bill_items : [];
-      bills.push({ ...row, bill_items: undefined, synced: 1 });
-      for (const item of itemRows) {
-        items.push(item);
-      }
+    if (options?.schoolId) {
+      supabaseQuery = supabaseQuery.eq("school_id", options.schoolId);
     }
-    await db.bills.bulkAdd(bills);
-    if (items.length > 0) await db.bill_items.bulkAdd(items);
-    return bills;
+
+    const { data } = await supabaseQuery;
+    if (data) {
+      await db.bills.clear();
+      await db.bill_items.clear();
+      const bills: any[] = [];
+      const items: any[] = [];
+      for (const row of data) {
+        const itemRows = Array.isArray(row.bill_items) ? row.bill_items : [];
+        bills.push({ ...row, bill_items: undefined, synced: 1 });
+        for (const item of itemRows) {
+          items.push(item);
+        }
+      }
+      await db.bills.bulkAdd(bills);
+      if (items.length > 0) await db.bill_items.bulkAdd(items);
+      return bills;
+    }
   }
 
-  return [];
+  const cached = await db.bills.orderBy("created_at").reverse().limit(options?.limit || 50).toArray();
+  return options?.schoolId
+    ? cached.filter((b: any) => b.school_id === options.schoolId)
+    : cached;
 }
 
 export async function getBill(id: string) {
@@ -237,19 +234,21 @@ export async function getBill(id: string) {
     return { bill: cached, items };
   }
 
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("bills")
-    .select("*, bill_items(*)")
-    .eq("id", id)
-    .single();
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("bills")
+      .select("*, bill_items(*)")
+      .eq("id", id)
+      .single();
 
-  if (data) {
-    const itemRows = Array.isArray((data as any).bill_items) ? (data as any).bill_items : [];
-    const bill = { ...data, bill_items: undefined, synced: 1 } as any;
-    await db.bills.put(bill);
-    if (itemRows.length > 0) await db.bill_items.bulkAdd(itemRows);
-    return { bill, items: itemRows };
+    if (data) {
+      const itemRows = Array.isArray((data as any).bill_items) ? (data as any).bill_items : [];
+      const bill = { ...data, bill_items: undefined, synced: 1 } as any;
+      await db.bills.put(bill);
+      if (itemRows.length > 0) await db.bill_items.bulkAdd(itemRows);
+      return { bill, items: itemRows };
+    }
   }
 
   return null;
@@ -261,28 +260,30 @@ export async function getShopConfig(key: string): Promise<string | null> {
   const cached = await db.shop_config.get(key);
   if (cached) return cached.value;
 
-  const supabase = createClient();
-  const { data } = await supabase.from("shop_config").select("value").eq("key", key).single();
-  if (data) {
-    await db.shop_config.put({ key, value: data.value });
-    return data.value;
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const { data } = await supabase.from("shop_config").select("value").eq("key", key).single();
+    if (data) {
+      await db.shop_config.put({ key, value: data.value });
+      return data.value;
+    }
   }
   return null;
 }
 
 export async function getShopConfigAll(): Promise<Record<string, string>> {
   const cached = await db.shop_config.toArray();
-  const map = Object.fromEntries(cached.map((r) => [r.key, r.value]));
+  if (cached.length > 0) return Object.fromEntries(cached.map((r) => [r.key, r.value]));
 
-  if (cached.length > 0) return map;
-
-  const supabase = createClient();
-  const { data } = await supabase.from("shop_config").select("key, value");
-  if (data) {
-    await db.shop_config.bulkAdd(data);
-    return Object.fromEntries(data.map((r: any) => [r.key, r.value]));
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const { data } = await supabase.from("shop_config").select("key, value");
+    if (data) {
+      await db.shop_config.bulkAdd(data);
+      return Object.fromEntries(data.map((r: any) => [r.key, r.value]));
+    }
   }
-  return map;
+  return {};
 }
 
 // ── School Groups ──

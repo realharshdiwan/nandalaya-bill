@@ -1,5 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+"use client";
+
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   Card,
@@ -15,134 +17,120 @@ import MarkPaidButton from "./mark-paid-button";
 import EditBillButton from "./edit-bill-button";
 import ThermalPrintButton from "./thermal-print-button";
 import AutoPrintHandler from "@/components/auto-print-handler";
+import { getBill, getShopConfigAll } from "@/lib/data";
 
-export const dynamic = "force-dynamic";
+export default function BillDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
 
-interface BillWithRelations {
-  id: string;
-  bill_number: string;
-  customer_name: string | null;
-  customer_phone: string | null;
-  school_id: string | null;
-  subtotal: number;
-  discount: number;
-  total: number;
-  payment_method: string;
-  payment_details: PaymentDetail[] | null;
-  notes: string | null;
-  is_paid: boolean;
-  status: string;
-  created_at: string;
-  voided_at: string | null;
-  schools: { name: string; short_code: string | null }[] | { name: string; short_code: string | null };
-}
+  const [bill, setBill] = useState<any>(null);
+  const [items, setItems] = useState<any[]>([]);
+  const [shopMap, setShopMap] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [qrDataUri, setQrDataUri] = useState<string | null>(null);
 
-interface PaymentDetail {
-  method: string;
-  amount: number;
-}
+  useEffect(() => {
+    async function load() {
+      const result = await getBill(id);
+      if (!result) {
+        setLoading(false);
+        return;
+      }
+      setBill(result.bill);
+      setItems(result.items);
 
-interface BillItemWithProduct {
-  id: string;
-  bill_id: string;
-  product_id: string;
-  product_name: string;
-  size_id: string | null;
-  size_label: string | null;
-  qty: number;
-  price: number;
-  subtotal: number;
-  discount_type: string;
-  discount_value: number;
-  discount_amount: number;
-  created_at: string;
-  products: { hsn_code: string | null } | null;
-}
+      const config = await getShopConfigAll();
+      setShopMap(config);
 
-export default async function BillDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
-  const supabase = await createClient();
+      const hasUpi =
+        result.bill.payment_method === "upi" ||
+        result.bill.payment_method === "split" ||
+        (result.bill.payment_details &&
+          result.bill.payment_details.some((p: any) => p.method === "upi"));
 
-  const { data: bill } = await supabase
-    .from("bills")
-    .select("*, schools(name, short_code)")
-    .eq("id", id)
-    .single();
+      if (hasUpi) {
+        let upiAmount = result.bill.total;
+        if (result.bill.payment_details) {
+          const upiPart = result.bill.payment_details.find((p: any) => p.method === "upi");
+          if (upiPart) upiAmount = upiPart.amount;
+        }
+        const upiId = config.upi_id || "";
+        if (upiId) {
+          const qp = new URLSearchParams({
+            pa: upiId,
+            pn: config.legal_name || "NANDALAYA",
+            am: upiAmount.toFixed(2),
+            tn: result.bill.bill_number,
+            cu: "INR",
+          });
+          const uri = `upi://pay?${qp.toString()}`;
+          const dataUri = await QRCode.toDataURL(uri, {
+            width: 256,
+            margin: 1,
+            color: { dark: "#000000", light: "#FFFFFF" },
+          });
+          setQrDataUri(dataUri);
+        }
+      }
 
-  if (!bill) notFound();
+      setLoading(false);
+    }
+    load();
+  }, [id]);
 
-  const { data: items } = await supabase
-    .from("bill_items")
-    .select("*, products(hsn_code)")
-    .eq("bill_id", id)
-    .order("created_at");
+  if (loading) {
+    return (
+      <div className="space-y-6 max-w-2xl mx-auto">
+        <div className="h-8 w-48 bg-[#4D8A6B] rounded animate-pulse" />
+        <div className="h-64 bg-[#4D8A6B] rounded animate-pulse" />
+      </div>
+    );
+  }
 
-  // Load shop config
-  const { data: shopRows } = await supabase.from("shop_config").select("key, value");
-  const shopMap = Object.fromEntries((shopRows || []).map((r) => [r.key, r.value]));
+  if (!bill) {
+    return (
+      <div className="space-y-6 max-w-2xl mx-auto text-center py-12">
+        <p className="text-[16px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
+          BILL NOT FOUND
+        </p>
+        <Link
+          href="/bills"
+          className="inline-flex items-center text-[14px] text-[#B3D6BF] hover:text-white [font-family:var(--font-oswald)] uppercase font-bold"
+        >
+          <ArrowLeft className="mr-1 h-4 w-4" />
+          BACK TO BILLS
+        </Link>
+      </div>
+    );
+  }
 
-  const typedBill = bill as BillWithRelations;
-  const normalizedItems = (items || []).map((item) => ({
-    ...item,
-    products: Array.isArray(item.products) ? item.products[0] : item.products,
-  })) as BillItemWithProduct[];
-  const typedItems = normalizedItems;
-  const school = Array.isArray(typedBill.schools) ? typedBill.schools[0] : typedBill.schools;
-  const isVoided = typedBill.status === "voided";
-  const hasItemDiscounts = typedItems.some((item) => item.discount_amount > 0);
-  const hasHsn = typedItems.some((item) => {
-    const products = item.products;
-    const product = Array.isArray(products) ? products[0] : products;
-    return product?.hsn_code;
-  });
-
-  const paymentDetails = typedBill.payment_details;
+  const isVoided = bill.status === "voided";
+  const hasItemDiscounts = items.some((item: any) => item.discount_amount > 0);
+  const hasHsn = items.some((item: any) => item.hsn_code);
+  const paymentDetails = bill.payment_details;
   const hasUpi =
     bill.payment_method === "upi" ||
     bill.payment_method === "split" ||
-    (paymentDetails && paymentDetails.some((p) => p.method === "upi"));
+    (paymentDetails && paymentDetails.some((p: any) => p.method === "upi"));
 
-  // Generate QR code if UPI is involved
-  let qrDataUri: string | null = null;
   let upiAmount = bill.total;
-
   if (hasUpi && paymentDetails) {
-    // For split: QR shows only the UPI portion
-    const upiPart = paymentDetails.find((p) => p.method === "upi");
+    const upiPart = paymentDetails.find((p: any) => p.method === "upi");
     if (upiPart) upiAmount = upiPart.amount;
   }
 
-  if (hasUpi) {
-    const { data: config } = await supabase
-      .from("shop_config")
-      .select("value")
-      .eq("key", "upi_id")
-      .single();
-
-    const upiId = config?.value || "";
-    if (upiId) {
-      const params = new URLSearchParams({
-        pa: upiId,
-        pn: shopMap.legal_name || "NANDALAYA",
-        am: upiAmount.toFixed(2),
-        tn: bill.bill_number,
-        cu: "INR",
-      });
-      const uri = `upi://pay?${params.toString()}`;
-      qrDataUri = await QRCode.toDataURL(uri, {
-        width: 256,
-        margin: 1,
-        color: { dark: "#000000", light: "#FFFFFF" },
-      });
-    }
-  }
+  const unsynced = bill.synced === 0;
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
+      {unsynced && (
+        <div className="rounded-[12px] border-2 border-[#0023D1] bg-blue-50 px-4 py-3 text-center">
+          <p className="text-[13px] font-bold text-[#0023D1] [font-family:var(--font-oswald)] uppercase">
+            Saved locally — will sync when back online
+          </p>
+        </div>
+      )}
+
       {/* Header — hidden during print */}
       <div className="space-y-3 no-print">
         <Link
@@ -154,67 +142,85 @@ export default async function BillDetailPage({
         </Link>
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)]">
-            {typedBill.bill_number}
+            {bill.bill_number}
           </h1>
-          <Badge>{typedBill.payment_method === "split" ? "SPLIT" : typedBill.payment_method}</Badge>
-          <Badge className={typedBill.is_paid ? "bg-[#00592B]" : "bg-[#E374C7]"}>
-            {typedBill.is_paid ? "PAID" : "UNPAID"}
+          <Badge>{bill.payment_method === "split" ? "SPLIT" : bill.payment_method}</Badge>
+          <Badge className={bill.is_paid ? "bg-[#00592B]" : "bg-[#E374C7]"}>
+            {bill.is_paid ? "PAID" : "UNPAID"}
           </Badge>
           {isVoided && (
             <Badge className="bg-[#C42424]">VOIDED</Badge>
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {!isVoided && (
-                      <EditBillButton
+          {!isVoided && !unsynced && (
+            <EditBillButton
               bill={{
-                id: typedBill.id,
-                customer_name: typedBill.customer_name,
-                customer_phone: typedBill.customer_phone,
-                school_id: typedBill.school_id,
-                subtotal: typedBill.subtotal,
-                discount: typedBill.discount,
-                total: typedBill.total,
-                notes: typedBill.notes,
+                id: bill.id,
+                customer_name: bill.customer_name,
+                customer_phone: bill.customer_phone,
+                school_id: bill.school_id,
+                subtotal: bill.subtotal,
+                discount: bill.discount,
+                total: bill.total,
+                notes: bill.notes,
               }}
-              items={typedItems}
+              items={items}
             />
           )}
-          {!isVoided && <MarkPaidButton billId={typedBill.id} isPaid={typedBill.is_paid} billItems={typedItems} billData={{ bill_number: typedBill.bill_number, created_at: typedBill.created_at, customer_name: typedBill.customer_name, customer_phone: typedBill.customer_phone, subtotal: typedBill.subtotal, discount: typedBill.discount, total: typedBill.total, payment_method: typedBill.payment_method, notes: typedBill.notes }} shopConfig={shopMap} />}
+          {!isVoided && !unsynced && (
+            <MarkPaidButton
+              billId={bill.id}
+              isPaid={bill.is_paid}
+              billItems={items}
+              billData={{
+                bill_number: bill.bill_number,
+                created_at: bill.created_at,
+                customer_name: bill.customer_name,
+                customer_phone: bill.customer_phone,
+                subtotal: bill.subtotal,
+                discount: bill.discount,
+                total: bill.total,
+                payment_method: bill.payment_method,
+                notes: bill.notes,
+              }}
+              shopConfig={shopMap}
+            />
+          )}
           <PrintButton />
           {!isVoided && (
             <ThermalPrintButton
               bill={{
-                bill_number: typedBill.bill_number,
-                created_at: typedBill.created_at,
-                customer_name: typedBill.customer_name,
-                customer_phone: typedBill.customer_phone,
-                subtotal: typedBill.subtotal,
-                discount: typedBill.discount,
-                total: typedBill.total,
-                payment_method: typedBill.payment_method,
-                notes: typedBill.notes,
+                bill_number: bill.bill_number,
+                created_at: bill.created_at,
+                customer_name: bill.customer_name,
+                customer_phone: bill.customer_phone,
+                subtotal: bill.subtotal,
+                discount: bill.discount,
+                total: bill.total,
+                payment_method: bill.payment_method,
+                notes: bill.notes,
               }}
-              items={typedItems}
+              items={items}
             />
           )}
           <AutoPrintHandler
             bill={{
-              bill_number: typedBill.bill_number,
-              created_at: typedBill.created_at,
-              customer_name: typedBill.customer_name,
-              customer_phone: typedBill.customer_phone,
-              subtotal: typedBill.subtotal,
-              discount: typedBill.discount,
-              total: typedBill.total,
-              payment_method: typedBill.payment_method,
-              notes: typedBill.notes,
+              bill_number: bill.bill_number,
+              created_at: bill.created_at,
+              customer_name: bill.customer_name,
+              customer_phone: bill.customer_phone,
+              subtotal: bill.subtotal,
+              discount: bill.discount,
+              total: bill.total,
+              payment_method: bill.payment_method,
+              notes: bill.notes,
             }}
-            items={typedItems}
+            items={items}
             shopConfig={shopMap}
           />
-          {!isVoided && (
-            <VoidBillButton billId={typedBill.id} billNumber={typedBill.bill_number} />
+          {!isVoided && !unsynced && (
+            <VoidBillButton billId={bill.id} billNumber={bill.bill_number} />
           )}
         </div>
       </div>
@@ -253,10 +259,6 @@ export default async function BillDetailPage({
               {paymentDetails.map((p: { method: string; amount: number }, i: number) => (
                 <div key={i} className="flex justify-between items-center text-[14px]">
                   <span className="text-[#00592B] [font-family:var(--font-oswald)] uppercase font-bold">
-                    {p.method === "cash" && "💵 "}
-                    {p.method === "upi" && "📱 "}
-                    {p.method === "card" && "💳 "}
-                    {p.method === "credit" && "📋 "}
                     {p.method}
                   </span>
                   <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)]">
@@ -320,12 +322,6 @@ export default async function BillDetailPage({
                 })}
               </p>
             </div>
-            {school && (
-              <div>
-                <p className="text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">SCHOOL</p>
-                <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)]">{school.short_code || school.name}</p>
-              </div>
-            )}
             {bill.customer_name && (
               <div>
                 <p className="text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">CUSTOMER</p>
@@ -356,7 +352,7 @@ export default async function BillDetailPage({
                 </tr>
               </thead>
               <tbody>
-                {typedItems.map((item) => (
+                {items.map((item: any) => (
                   <tr key={item.id} className="border-b border-black last:border-0">
                     <td className="py-2.5">
                       <span className="font-bold text-[#00592B] [font-family:var(--font-oswald)] uppercase">{item.product_name}</span>
@@ -364,7 +360,7 @@ export default async function BillDetailPage({
                     </td>
                     {hasHsn && (
                       <td className="py-2.5 text-center text-[#00592B] [font-family:var(--font-oswald)]">
-                        {item.products?.hsn_code || ""}
+                        {item.hsn_code || ""}
                       </td>
                     )}
                     <td className="py-2.5 text-center font-bold text-[#00592B] [font-family:var(--font-oswald)]">{item.qty}</td>

@@ -14,6 +14,7 @@ export async function syncAll() {
       syncSizes(supabase),
       syncSizeGroups(supabase),
       syncSizeGroupItems(supabase),
+      syncPriceList(supabase),
       syncShopConfig(supabase),
       syncBills(supabase),
     ]);
@@ -67,6 +68,17 @@ async function syncSizeGroupItems(supabase: ReturnType<typeof createClient>) {
   if (data) {
     await db.size_group_items.clear();
     await db.size_group_items.bulkAdd(data as any[]);
+  }
+}
+
+async function syncPriceList(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase
+    .from("price_list")
+    .select("*")
+    .eq("is_active", true);
+  if (data) {
+    await db.price_list.clear();
+    await db.price_list.bulkAdd(data as any[]);
   }
 }
 
