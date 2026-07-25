@@ -184,7 +184,12 @@ export async function createBill(bill: any, items: any[]) {
   if (itemsError) throw itemsError;
 
   await db.bills.put({ ...billData, synced: 1 } as any);
-  await db.bill_items.bulkAdd(billItems);
+  await db.bill_items.bulkAdd(
+    billItems.map((item, i) => ({
+      ...item,
+      id: `${billData.id}-item-${i}`,
+    }))
+  );
 
   return billData;
 }
@@ -405,9 +410,30 @@ export async function generateBillNumber(): Promise<string | null> {
   if (navigator.onLine) {
     const supabase = createClient();
     const { data, error } = await supabase.rpc("generate_bill_number");
-    if (!error && data) return data;
+    if (!error && data) {
+      await db.shop_config.put({ key: "last_bill_number", value: data });
+      return data;
+    }
   }
-  return `OFFLINE-${Date.now().toString(36).toUpperCase()}`;
+
+  const year = new Date().getFullYear();
+  const lastStored = await db.shop_config.get("last_bill_number");
+  let seq = 9000;
+  if (lastStored) {
+    const match = lastStored.value.match(/NY-(\d{4})-(\d{4})/);
+    if (match) {
+      const lastYear = parseInt(match[1]);
+      const lastSeq = parseInt(match[2]);
+      if (lastYear === year) {
+        seq = lastSeq + 1;
+      } else {
+        seq = 9000;
+      }
+    }
+  }
+  const formatted = `NY-${year}-${String(seq).padStart(4, "0")}`;
+  await db.shop_config.put({ key: "last_bill_number", value: formatted });
+  return formatted;
 }
 
 export async function decrementStock(productId: string, qty: number) {
@@ -443,7 +469,12 @@ export async function createBillOffline(bill: any, items: any[]) {
     }
 
     await db.bills.put({ ...billData, synced: 1 } as any);
-    await db.bill_items.bulkAdd(billItems);
+    await db.bill_items.bulkAdd(
+      billItems.map((item, i) => ({
+        ...item,
+        id: `${billId}-item-${i}`,
+      }))
+    );
 
     return billData;
   }

@@ -85,8 +85,11 @@ async function syncPriceList(supabase: ReturnType<typeof createClient>) {
 async function syncShopConfig(supabase: ReturnType<typeof createClient>) {
   const { data } = await supabase.from("shop_config").select("*");
   if (data) {
+    const localOnly = await db.shop_config
+      .filter((r) => !data.some((d: any) => d.key === r.key))
+      .toArray();
     await db.shop_config.clear();
-    await db.shop_config.bulkAdd(data as any[]);
+    await db.shop_config.bulkAdd([...data, ...localOnly] as any[]);
   }
 }
 
@@ -98,23 +101,25 @@ async function syncBills(supabase: ReturnType<typeof createClient>) {
     .limit(100);
 
   if (data) {
-    const bills: any[] = [];
-    const items: any[] = [];
-    for (const row of data) {
-      const itemRows = Array.isArray(row.bill_items) ? row.bill_items : [];
-      bills.push({ ...row, bill_items: undefined, synced: 1 });
-      for (const item of itemRows) {
-        items.push(item);
-      }
-    }
+    const unsyncedBills = await db.bills.where("synced").equals(0).toArray();
+    const unsyncedIds = unsyncedBills.map((b) => b.id);
+    const unsyncedItems = unsyncedIds.length > 0
+      ? await db.bill_items.where("bill_id").anyOf(unsyncedIds).toArray()
+      : [];
 
     await db.bills.clear();
-    await db.bills.bulkAdd(bills);
+    await db.bills.bulkAdd([
+      ...unsyncedBills,
+      ...data.map((row) => ({ ...row, bill_items: undefined, synced: 1 })),
+    ]);
 
     await db.bill_items.clear();
-    if (items.length > 0) {
-      await db.bill_items.bulkAdd(items);
-    }
+    await db.bill_items.bulkAdd([
+      ...unsyncedItems,
+      ...data.flatMap((row) =>
+        Array.isArray(row.bill_items) ? row.bill_items : []
+      ),
+    ]);
   }
 }
 
