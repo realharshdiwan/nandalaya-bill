@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import db, { type PriceEntry, type School, type Product, type Size, type SizeGroup, type ShopConfig } from "@/lib/db";
+import db, { type PriceEntry, type School, type Product, type Size, type SizeGroup } from "@/lib/db";
 import { syncAll, syncPriceListForSchool, syncPricesForGroup, flushOfflineQueue } from "@/lib/sync";
 
 let initialSyncDone = false;
@@ -291,4 +291,164 @@ export async function getPriceEntries() {
     products: Array.isArray(row.products) ? row.products[0] : row.products,
     sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
   }));
+}
+
+// ── Search (client-side, works offline) ──
+
+export async function searchSchools(term: string): Promise<School[]> {
+  const schools = await getSchools();
+  if (!term.trim()) return schools.slice(0, 5);
+  const q = term.toLowerCase();
+  return schools
+    .filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.short_code || "").toLowerCase().includes(q)
+    )
+    .slice(0, 5);
+}
+
+export async function searchProducts(term: string): Promise<Product[]> {
+  const products = await getProducts();
+  if (!term.trim()) return [];
+  const q = term.toLowerCase();
+  return products
+    .filter((p) => p.name.toLowerCase().includes(q))
+    .slice(0, 5);
+}
+
+export async function searchPrices(term: string): Promise<any[]> {
+  if (!term.trim()) return [];
+  const q = term.toLowerCase();
+  const schools = await getSchools();
+  const products = await getProducts();
+
+  const priceList = await db.price_list.toArray();
+  const schoolMap = Object.fromEntries(schools.map((s) => [s.id, s]));
+  const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
+  const sizes = await getSizes();
+  const sizeMap = Object.fromEntries(sizes.map((s) => [s.id, s]));
+
+  const results = [];
+  for (const p of priceList) {
+    if (!p.is_active) continue;
+    const school = p.school_id ? schoolMap[p.school_id] : null;
+    const product = p.product_id ? productMap[p.product_id] : null;
+    const size = p.size_id ? sizeMap[p.size_id] : null;
+    if (!product) continue;
+
+    const schoolStr = school ? `${school.name} ${school.short_code || ""}` : "";
+    const productStr = product.name;
+    const sizeStr = size ? size.label : "";
+    const haystack = `${schoolStr} ${productStr} ${sizeStr}`.toLowerCase();
+
+    if (!haystack.includes(q)) continue;
+
+    results.push({
+      id: p.id,
+      price: p.price,
+      school: school || null,
+      product,
+      size,
+      schoolName: school?.name || "",
+      schoolCode: school?.short_code || "",
+      productName: product.name,
+      sizeLabel: size?.label || "",
+    });
+  }
+
+  return results.slice(0, 10);
+}
+
+// ── Sizes for product ──
+
+export async function getSizesForProduct(productId: string): Promise<Size[]> {
+  const products = await getProducts();
+  const product = products.find((p) => p.id === productId);
+  if (!product?.size_group_id) return [];
+
+  const groupItems = await db.size_group_items
+    .where("size_group_id")
+    .equals(product.size_group_id)
+    .sortBy("sort_order");
+
+  const sizes = await db.sizes.toArray();
+  return groupItems
+    .map((gi) => sizes.find((s) => s.id === gi.size_id))
+    .filter(Boolean) as Size[];
+}
+
+// ── Offline-friendly bill creation ──
+
+export async function generateBillNumber(): Promise<string | null> {
+  if (navigator.onLine) {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("generate_bill_number");
+    if (!error && data) return data;
+  }
+  return `OFFLINE-${Date.now().toString(36).toUpperCase()}`;
+}
+
+export async function decrementStock(productId: string, qty: number) {
+  if (navigator.onLine) {
+    const supabase = createClient();
+    await supabase.rpc("decrement_stock", { p_product_id: productId, p_qty: qty });
+  }
+}
+
+export async function createBillOffline(bill: any, items: any[]) {
+  const supabase = createClient();
+
+  if (navigator.onLine) {
+    const { data: billData, error } = await supabase
+      .from("bills")
+      .insert(bill)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const billId = (billData as any).id;
+    const billItems = items.map((item) => ({ ...item, bill_id: billId }));
+
+    const { error: itemsError } = await supabase.from("bill_items").insert(billItems);
+    if (itemsError) {
+      await supabase.from("bills").delete().eq("id", billId);
+      throw itemsError;
+    }
+
+    await db.bills.put({ ...billData, synced: 1 } as any);
+    await db.bill_items.bulkAdd(billItems);
+
+    return billData;
+  }
+
+  const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const offlineBill = { ...bill, id: tempId, synced: 0 };
+  const offlineItems = items.map((item) => ({
+    ...item,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    bill_id: tempId,
+  }));
+
+  await db.bills.put(offlineBill);
+  await db.bill_items.bulkAdd(offlineItems);
+
+  await db.offline_queue.add({
+    table: "bills",
+    action: "insert",
+    data: bill,
+    created_at: new Date().toISOString(),
+  });
+
+  for (const item of items) {
+    await db.offline_queue.add({
+      table: "bill_items",
+      action: "insert",
+      data: item,
+      created_at: new Date().toISOString(),
+    });
+  }
+
+  return offlineBill;
 }

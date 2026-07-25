@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import {
   Card,
@@ -12,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Search, School, Package, IndianRupee, Receipt, ShoppingCart } from "lucide-react";
 import Link from "next/link";
+import { searchSchools, searchProducts, searchPrices } from "@/lib/data";
 
 interface SearchResult {
   type: "school" | "product" | "price";
@@ -25,7 +25,6 @@ export default function HomePage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const supabase = createClient();
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -34,33 +33,16 @@ export default function HomePage() {
     }
 
     setLoading(true);
-    const term = `%${q}%`;
 
-    const [schoolsRes, productsRes, pricesRes] = await Promise.all([
-      supabase
-        .from("schools")
-        .select("id, name, short_code")
-        .or(`name.ilike.${term},short_code.ilike.${term}`)
-        .eq("is_active", true)
-        .limit(5),
-      supabase
-        .from("products")
-        .select("id, name, category")
-        .ilike("name", term)
-        .limit(5),
-      supabase
-        .from("price_list")
-        .select("id, price, schools(name, short_code), products(name), sizes(label)")
-        .eq("is_active", true)
-        .or(
-          `schools.name.ilike.${term},schools.short_code.ilike.${term},products.name.ilike.${term},sizes.label.ilike.${term}`
-        )
-        .limit(10),
+    const [schools, products, prices] = await Promise.all([
+      searchSchools(q),
+      searchProducts(q),
+      searchPrices(q),
     ]);
 
     const searchResults: SearchResult[] = [];
 
-    schoolsRes.data?.forEach((s) =>
+    schools.forEach((s) =>
       searchResults.push({
         type: "school",
         id: s.id,
@@ -69,7 +51,7 @@ export default function HomePage() {
       })
     );
 
-    productsRes.data?.forEach((p) =>
+    products.forEach((p) =>
       searchResults.push({
         type: "product",
         id: p.id,
@@ -78,30 +60,19 @@ export default function HomePage() {
       })
     );
 
-    interface SearchResultPrice {
-      id: string;
-      price: number;
-      schools: { name: string; short_code: string | null }[] | { name: string; short_code: string | null };
-      products: { name: string }[] | { name: string };
-      sizes: { label: string }[] | { label: string };
-    }
-
-    pricesRes.data?.forEach((p: SearchResultPrice) => {
-      const school = Array.isArray(p.schools) ? p.schools[0] : p.schools;
-      const product = Array.isArray(p.products) ? p.products[0] : p.products;
-      const size = Array.isArray(p.sizes) ? p.sizes[0] : p.sizes;
+    prices.forEach((p: any) =>
       searchResults.push({
         type: "price",
         id: p.id,
-        title: `${school?.short_code || school?.name} — ${product?.name} (${size?.label})`,
+        title: `${p.schoolCode || p.schoolName} — ${p.productName}${p.sizeLabel ? ` (${p.sizeLabel})` : ""}`,
         subtitle: `₹${p.price}`,
         price: p.price,
-      });
-    });
+      })
+    );
 
     setResults(searchResults);
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   return (
     <div className="space-y-8">

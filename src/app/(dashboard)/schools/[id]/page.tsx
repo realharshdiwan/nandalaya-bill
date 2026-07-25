@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,51 +15,15 @@ import { ArrowLeft, Plus, Pencil, ShoppingCart, Minus, User, Check } from "lucid
 import DeleteSchoolButton from "./delete-school-button";
 import { addToCart, getCart, removeFromCart, CartItem } from "@/lib/cart";
 import { toast } from "sonner";
-
-interface School {
-  id: string;
-  name: string;
-  short_code: string | null;
-  address: string | null;
-  phone: string | null;
-}
-
-interface PriceEntry {
-  product_id: string;
-  product_name: string;
-  size_id: string | null;
-  size_label: string;
-  price: number;
-}
-
-interface ProductGroup {
-  name: string;
-  category: string;
-  entries: PriceEntry[];
-}
-
-interface PriceListRow {
-  id: string;
-  price: number;
-  products: { id: string; name: string; category: string }[] | { id: string; name: string; category: string };
-  sizes: { id: string; label: string; numeric_value: number }[] | { id: string; label: string; numeric_value: number };
-}
-
-interface NormalizedPriceRow {
-  id: string;
-  price: number;
-  products: { id: string; name: string; category: string };
-  sizes: { id: string; label: string; numeric_value: number };
-}
+import { getSchool, getPricesForSchool, getShopConfig, generateBillNumber, createBillOffline, decrementStock } from "@/lib/data";
 
 export default function SchoolDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
-  const supabase = createClient();
 
-  const [school, setSchool] = useState<School | null>(null);
-  const [products, setProducts] = useState<ProductGroup[]>([]);
+  const [school, setSchool] = useState<any>(null);
+  const [products, setProducts] = useState<any[]>([]);
   const [cart, setCartState] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [quickPayment, setQuickPayment] = useState("cash");
@@ -82,74 +45,38 @@ export default function SchoolDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: schoolData } = await supabase
-        .from("schools")
-        .select("id, name, short_code, address, phone, school_group_id")
-        .eq("id", id)
-        .single();
-
+      const schoolData = await getSchool(id);
       if (!schoolData) {
         setLoading(false);
         return;
       }
       setSchool(schoolData);
 
-      const groupId = (schoolData as { school_group_id: string | null }).school_group_id;
+      const prices = await getPricesForSchool(id);
 
-      const [schoolPricesRes, groupPricesRes] = await Promise.all([
-        supabase
-          .from("price_list")
-          .select("id, price, products(id, name, category), sizes(id, label, numeric_value)")
-          .eq("school_id", id)
-          .eq("is_active", true)
-          .order("products(name)"),
-        groupId
-          ? supabase
-              .from("price_list")
-              .select("id, price, products(id, name, category), sizes(id, label, numeric_value)")
-              .eq("school_group_id", groupId)
-              .eq("is_active", true)
-              .order("products(name)")
-          : Promise.resolve({ data: [] }),
-      ]);
-
-      const normalize = (rows: any[]) =>
-        (rows || []).map((pl: PriceListRow): NormalizedPriceRow => ({
-          ...pl,
-          products: Array.isArray(pl.products) ? pl.products[0] : pl.products,
-          sizes: Array.isArray(pl.sizes) ? pl.sizes[0] : pl.sizes,
-        }));
-
-      const schoolPrices = normalize(schoolPricesRes.data || []);
-      const groupPrices = normalize(groupPricesRes.data || []);
-
-      const schoolKeys = new Set(schoolPrices.map((p) => `${p.products?.id}-${p.sizes?.id || ""}`));
-      const priceList: NormalizedPriceRow[] = [
-        ...schoolPrices,
-        ...groupPrices.filter((p) => !schoolKeys.has(`${p.products?.id}-${p.sizes?.id || ""}`)),
-      ];
-
-      const productMap: Record<string, ProductGroup> = {};
-      priceList.forEach((pl) => {
-        const name = pl.products?.name || "Unknown";
+      const productMap: Record<string, any> = {};
+      for (const p of prices) {
+        const product = (p as any).products as any;
+        const size = (p as any).sizes as any;
+        const name = product?.name || "Unknown";
         if (!productMap[name]) {
           productMap[name] = {
             name,
-            category: pl.products?.category || "",
+            category: product?.category || "",
             entries: [],
           };
         }
         productMap[name].entries.push({
-          product_id: pl.products?.id || "",
+          product_id: product?.id || "",
           product_name: name,
-          size_id: pl.sizes?.id || null,
-          size_label: pl.sizes?.label || "",
-          price: pl.price,
+          size_id: size?.id || null,
+          size_label: size?.label || "",
+          price: p.price,
         });
-      });
+      }
 
       const groups = Object.values(productMap);
-      groups.sort((a, b) => {
+      groups.sort((a: any, b: any) => {
         const order = ["uniform", "shoes", "accessories", "other"];
         const ai = order.indexOf(a.category);
         const bi = order.indexOf(b.category);
@@ -159,7 +86,7 @@ export default function SchoolDetailPage() {
       setLoading(false);
     }
     load();
-  }, [id, supabase]);
+  }, [id]);
 
   function getQtyInCart(productId: string, sizeId: string | null): number {
     const item = cart.find(
@@ -168,7 +95,7 @@ export default function SchoolDetailPage() {
     return item?.qty || 0;
   }
 
-  function handleAdd(entry: PriceEntry) {
+  function handleAdd(entry: any) {
     addToCart({
       product_id: entry.product_id,
       product_name: entry.product_name,
@@ -188,24 +115,18 @@ export default function SchoolDetailPage() {
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  // Load default payment method
   useEffect(() => {
-    supabase
-      .from("shop_config")
-      .select("value")
-      .eq("key", "default_payment")
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.value) setQuickPayment(data.value);
-      });
-  }, [supabase]);
+    getShopConfig("default_payment").then((val) => {
+      if (val) setQuickPayment(val);
+    });
+  }, []);
 
   async function quickSave() {
     if (cart.length === 0) return;
     setQuickSaving(true);
 
-    const { data: billNumber, error: bnError } = await supabase.rpc("generate_bill_number");
-    if (bnError || !billNumber) {
+    const billNumber = await generateBillNumber();
+    if (!billNumber) {
       toast.error("Failed to generate bill number");
       setQuickSaving(false);
       return;
@@ -214,63 +135,49 @@ export default function SchoolDetailPage() {
     const subtotal = cartTotal;
     const total = subtotal;
 
-    const { data: bill, error: billError } = await supabase
-      .from("bills")
-      .insert({
-        bill_number: billNumber,
-        customer_name: quickCustomer || null,
-        school_id: id,
-        subtotal,
-        discount: 0,
-        total,
-        payment_method: quickPayment,
-        is_paid: quickPayment !== "credit",
-        paid_at: quickPayment !== "credit" ? new Date().toISOString() : null,
-      })
-      .select("id")
-      .single();
+    try {
+      const bill = await createBillOffline(
+        {
+          bill_number: billNumber,
+          customer_name: quickCustomer || null,
+          school_id: id,
+          subtotal,
+          discount: 0,
+          total,
+          payment_method: quickPayment,
+          is_paid: quickPayment !== "credit",
+          paid_at: quickPayment !== "credit" ? new Date().toISOString() : null,
+          status: "active",
+        },
+        cart.map((item) => ({
+          product_id: item.product_id,
+          size_id: item.size_id || null,
+          product_name: item.product_name,
+          size_label: item.size_label || null,
+          qty: item.qty,
+          price: item.price,
+          subtotal: item.qty * item.price,
+          discount_type: "none",
+          discount_value: 0,
+          discount_amount: 0,
+        }))
+      );
 
-    if (billError) {
-      toast.error("Failed to create bill: " + billError.message);
+      for (const item of cart) {
+        await decrementStock(item.product_id, item.qty);
+      }
+
+      const { clearCart } = await import("@/lib/cart");
+      clearCart();
+
+      toast.success(`Bill ${billNumber} created`);
+      const billIsPaid = quickPayment !== "credit";
+      router.push(`/bills/${(bill as any).id}${billIsPaid ? "?autoprint=true" : ""}`);
+    } catch (err: any) {
+      toast.error("Failed to create bill: " + (err?.message || "Unknown error"));
+    } finally {
       setQuickSaving(false);
-      return;
     }
-
-    const billItems = cart.map((item) => ({
-      bill_id: bill.id,
-      product_id: item.product_id,
-      size_id: item.size_id || null,
-      product_name: item.product_name,
-      size_label: item.size_label || null,
-      qty: item.qty,
-      price: item.price,
-      subtotal: item.qty * item.price,
-      discount_type: "none",
-      discount_value: 0,
-      discount_amount: 0,
-    }));
-
-    const { error: itemsError } = await supabase.from("bill_items").insert(billItems);
-
-    if (itemsError) {
-      await supabase.from("bills").delete().eq("id", bill.id);
-      toast.error("Failed to save items: " + itemsError.message);
-      setQuickSaving(false);
-      return;
-    }
-
-    // Decrement stock
-    for (const item of cart) {
-      await supabase.rpc("decrement_stock", { p_product_id: item.product_id, p_qty: item.qty });
-    }
-
-    // Clear cart
-    const { clearCart } = await import("@/lib/cart");
-    clearCart();
-
-    toast.success(`Bill ${billNumber} created`);
-    const billIsPaid = quickPayment !== "credit";
-    router.push(`/bills/${bill.id}${billIsPaid ? "?autoprint=true" : ""}`);
   }
 
   if (loading) {
@@ -334,7 +241,7 @@ export default function SchoolDetailPage() {
       {products.length > 0 ? (
         <div className="space-y-6">
           {(() => {
-            const categoryMap: Record<string, ProductGroup[]> = {};
+            const categoryMap: Record<string, any[]> = {};
             for (const p of products) {
               const cat = p.category || "other";
               if (!categoryMap[cat]) categoryMap[cat] = [];
@@ -357,7 +264,7 @@ export default function SchoolDetailPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="flex flex-wrap gap-2">
-                          {product.entries.map((entry) => {
+                          {product.entries.map((entry: any) => {
                             const qty = getQtyInCart(entry.product_id, entry.size_id);
                             return (
                               <div

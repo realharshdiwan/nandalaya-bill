@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +15,8 @@ import {
 import { ArrowLeft, Plus, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { getProducts, getPricesForSchool, getSizesForProduct } from "@/lib/data";
 
 interface ExistingItem {
   id: string;
@@ -29,18 +30,6 @@ interface ExistingItem {
   discount_type: string;
   discount_value: number;
   discount_amount: number;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  sort_order: number;
-  size_group_id: string | null;
-}
-
-interface Size {
-  id: string;
-  label: string;
 }
 
 interface PriceEntry {
@@ -88,8 +77,8 @@ export default function EditBillPanel({
   const router = useRouter();
   const supabase = createClient();
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [sizes, setSizes] = useState<Size[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [sizes, setSizes] = useState<any[]>([]);
   const [schoolPrices, setSchoolPrices] = useState<PriceEntry[]>([]);
 
   const [customerName, setCustomerName] = useState(bill.customer_name || "");
@@ -108,62 +97,26 @@ export default function EditBillPanel({
 
   const loadSizesForProduct = useCallback(async (productId: string) => {
     if (!productId) { setSizes([]); return; }
-    const product = products.find((p) => p.id === productId);
-    if (!product?.size_group_id) { setSizes([]); return; }
-    const { data } = await supabase
-      .from("size_group_items")
-      .select("sizes(id, label)")
-      .eq("size_group_id", product.size_group_id)
-      .order("sort_order");
-    const resolved = (data || []).map((row) => {
-      const s = Array.isArray(row.sizes) ? row.sizes[0] : row.sizes;
-      return { id: s?.id || "", label: s?.label || "" };
-    }).filter((s) => s.id);
+    const resolved = await getSizesForProduct(productId);
     setSizes(resolved);
-  }, [products, supabase]);
+  }, []);
 
   useEffect(() => {
     async function load() {
-      const [productsRes, pricesRes, schoolRes] = await Promise.all([
-        supabase.from("products").select("id, name, sort_order, size_group_id").order("sort_order").order("name"),
-        bill.school_id
-          ? supabase.from("price_list").select("product_id, price, sizes(id, label)").eq("school_id", bill.school_id).eq("is_active", true)
-          : Promise.resolve({ data: [] }),
-        bill.school_id
-          ? supabase.from("schools").select("school_group_id").eq("id", bill.school_id).single()
-          : Promise.resolve({ data: null }),
-      ]);
-      setProducts(productsRes.data || []);
+      const productsData = await getProducts();
+      setProducts(productsData);
 
-      const groupId = (schoolRes.data as { school_group_id: string | null } | null)?.school_group_id;
-      const groupPricesRes = groupId
-        ? await supabase.from("price_list").select("product_id, price, sizes(id, label)").eq("school_group_id", groupId).eq("is_active", true)
-        : { data: [] };
-
-      interface RawPriceListRow {
-        product_id: string;
-        price: number;
-        sizes: { id: string; label: string }[] | { id: string; label: string } | null;
-      }
-
-      const normalize = (rows: any[]) =>
-        (rows || []).map((row: RawPriceListRow) => ({
-          product_id: row.product_id,
-          price: row.price,
-          sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
+      let merged: PriceEntry[] = [];
+      if (bill.school_id) {
+        const prices = await getPricesForSchool(bill.school_id);
+        merged = prices.map((p: any) => ({
+          product_id: p.product_id,
+          price: p.price,
+          sizes: (p as any).sizes || null,
         }));
-
-      const schoolPrices = normalize(pricesRes.data || []);
-      const groupPrices = normalize(groupPricesRes.data || []);
-
-      const schoolKeys = new Set(schoolPrices.map((p: any) => `${p.product_id}-${p.sizes?.id || ""}`));
-      const merged = [
-        ...schoolPrices,
-        ...groupPrices.filter((gp: any) => !schoolKeys.has(`${gp.product_id}-${gp.sizes?.id || ""}`)),
-      ];
+      }
       setSchoolPrices(merged);
 
-      // Convert existing items to BillItem format
       const converted: BillItem[] = existingItems.map((ei) => ({
         key: ei.id,
         existing_id: ei.id,
@@ -182,7 +135,7 @@ export default function EditBillPanel({
       setItems(converted);
     }
     load();
-  }, [supabase, bill.school_id, existingItems]);
+  }, [bill.school_id, existingItems]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {

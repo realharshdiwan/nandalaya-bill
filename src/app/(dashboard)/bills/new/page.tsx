@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,31 +20,7 @@ import { ArrowLeft, Plus, Trash2, Receipt, User, FileText } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { getCart, clearCart } from "@/lib/cart";
-
-interface School {
-  id: string;
-  name: string;
-  short_code: string | null;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  sort_order: number;
-  current_stock: number;
-  size_group_id: string | null;
-}
-
-interface Size {
-  id: string;
-  label: string;
-}
-
-interface PriceEntry {
-  product_id: string;
-  price: number;
-  sizes: Size | null;
-}
+import { getSchools, getProducts, getShopConfig, getPricesForSchool, getSizesForProduct, generateBillNumber, createBillOffline, decrementStock } from "@/lib/data";
 
 interface BillItem {
   key: string;
@@ -64,12 +39,11 @@ interface BillItem {
 
 export default function NewBillPage() {
   const router = useRouter();
-  const supabase = createClient();
 
-  const [schools, setSchools] = useState<School[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [sizes, setSizes] = useState<Size[]>([]);
-  const [schoolPrices, setSchoolPrices] = useState<PriceEntry[]>([]);
+  const [schools, setSchools] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [sizes, setSizes] = useState<any[]>([]);
+  const [schoolPrices, setSchoolPrices] = useState<any[]>([]);
 
   const [selectedSchool, setSelectedSchool] = useState<string>("");
   const [customerName, setCustomerName] = useState("");
@@ -96,28 +70,18 @@ export default function NewBillPage() {
 
   const loadSizesForProduct = useCallback(async (productId: string) => {
     if (!productId) { setSizes([]); return; }
-    const product = products.find((p) => p.id === productId);
-    if (!product?.size_group_id) { setSizes([]); return; }
-    const { data } = await supabase
-      .from("size_group_items")
-      .select("sizes(id, label)")
-      .eq("size_group_id", product.size_group_id)
-      .order("sort_order");
-    const resolved = (data || []).map((row) => {
-      const s = Array.isArray(row.sizes) ? row.sizes[0] : row.sizes;
-      return { id: s?.id || "", label: s?.label || "" };
-    }).filter((s) => s.id);
+    const resolved = await getSizesForProduct(productId);
     setSizes(resolved);
-  }, [products, supabase]);
+  }, []);
 
   useEffect(() => {
     async function load() {
-      const [schoolsRes, productsRes] = await Promise.all([
-        supabase.from("schools").select("id, name, short_code").eq("is_active", true).order("name"),
-        supabase.from("products").select("id, name, sort_order, current_stock, size_group_id").order("sort_order").order("name"),
+      const [schoolsData, productsData] = await Promise.all([
+        getSchools(),
+        getProducts(),
       ]);
-      setSchools(schoolsRes.data || []);
-      setProducts(productsRes.data || []);
+      setSchools(schoolsData);
+      setProducts(productsData);
 
       // Check for pre-loaded cart from school detail page
       const cartItems = getCart();
@@ -125,24 +89,17 @@ export default function NewBillPage() {
       const schoolParam = params.get("school");
 
       // Load default payment method from shop config
-      const { data: config } = await supabase
-        .from("shop_config")
-        .select("value")
-        .eq("key", "default_payment")
-        .maybeSingle();
-      if (config?.value) {
-        setPaymentMethod(config.value);
+      const config = await getShopConfig("default_payment");
+      if (config) {
+        setPaymentMethod(config);
       }
       setPaymentDefaultLoaded(true);
 
       if (cartItems.length > 0 && schoolParam) {
         setSelectedSchool(schoolParam);
 
-        // Convert CartItems → BillItems
-        const allProducts = productsRes.data || [];
-
         const newBillItems: BillItem[] = cartItems.map((ci) => {
-          const product = allProducts.find((p) => p.id === ci.product_id);
+          const product = productsData.find((p) => p.id === ci.product_id);
           const subtotal = ci.qty * ci.price;
           return {
             key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -166,7 +123,7 @@ export default function NewBillPage() {
       }
     }
     load();
-  }, [supabase]);
+  }, []);
 
   const loadSchoolPrices = useCallback(async (schoolId: string) => {
     if (!schoolId) {
@@ -174,56 +131,13 @@ export default function NewBillPage() {
       return;
     }
 
-    const { data: school } = await supabase
-      .from("schools")
-      .select("school_group_id")
-      .eq("id", schoolId)
-      .single();
-
-    const groupId = (school as { school_group_id: string | null } | null)?.school_group_id;
-
-    const [schoolPricesRes, groupPricesRes] = await Promise.all([
-      supabase
-        .from("price_list")
-        .select("product_id, price, sizes(id, label)")
-        .eq("school_id", schoolId)
-        .eq("is_active", true),
-      groupId
-        ? supabase
-            .from("price_list")
-            .select("product_id, price, sizes(id, label)")
-            .eq("school_group_id", groupId)
-            .eq("is_active", true)
-        : Promise.resolve({ data: [] }),
-    ]);
-
-    interface RawPriceListRow {
-      product_id: string;
-      price: number;
-      sizes: { id: string; label: string }[] | { id: string; label: string } | null;
-    }
-
-    const normalize = (rows: any[]) =>
-      (rows || []).map((row: RawPriceListRow) => ({
-        product_id: row.product_id,
-        price: row.price,
-        sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
-      }));
-
-    const schoolPrices = normalize(schoolPricesRes.data || []);
-    const groupPrices = normalize(groupPricesRes.data || []);
-
-    const merged = [...schoolPrices];
-    const schoolKeys = new Set(schoolPrices.map((p: any) => `${p.product_id}-${p.sizes?.id || ""}`));
-    for (const gp of groupPrices) {
-      const key = `${gp.product_id}-${gp.sizes?.id || ""}`;
-      if (!schoolKeys.has(key)) {
-        merged.push(gp);
-      }
-    }
-
-    setSchoolPrices(merged);
-  }, [supabase]);
+    const prices = await getPricesForSchool(schoolId);
+    setSchoolPrices(prices.map((p: any) => ({
+      product_id: p.product_id,
+      price: p.price,
+      sizes: (p as any).sizes || null,
+    })));
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -376,84 +290,67 @@ export default function NewBillPage() {
 
     setLoading(true);
 
-    const { data: billNumber, error: bnError } = await supabase.rpc("generate_bill_number");
-
-    if (bnError || !billNumber) {
+    const billNumber = await generateBillNumber();
+    if (!billNumber) {
       toast.error("Failed to generate bill number");
       setLoading(false);
       return;
     }
 
-    const { data: bill, error: billError } = await supabase
-      .from("bills")
-      .insert({
-        bill_number: billNumber,
-        customer_name: customerName || null,
-        customer_phone: customerPhone || null,
-        school_id: selectedSchool || null,
-        subtotal,
-        discount: discountNum,
-        total,
-        payment_method: paymentMethod,
-        payment_details: paymentMethod === "split" ? (() => {
-          const details: { method: string; amount: number }[] = [];
-          const cashAmt = parseFloat(splitCash) || 0;
-          const upiAmt = parseFloat(splitUpi) || 0;
-          const creditAmt = parseFloat(splitCredit) || 0;
-          if (cashAmt > 0) details.push({ method: "cash", amount: cashAmt });
-          if (upiAmt > 0) details.push({ method: "upi", amount: upiAmt });
-          if (creditAmt > 0) details.push({ method: "credit", amount: creditAmt });
-          return details.length > 0 ? details : null;
-        })() : null,
-        notes: notes || null,
-        is_paid: paymentMethod !== "credit" && !(paymentMethod === "split" && parseFloat(splitCredit) > 0),
-        paid_at: paymentMethod !== "credit" && !(paymentMethod === "split" && parseFloat(splitCredit) > 0) ? new Date().toISOString() : null,
-      })
-      .select("id")
-      .single();
-
-    if (billError) {
-      toast.error("Failed to create bill: " + billError.message);
-      setLoading(false);
-      return;
-    }
-
-    const billItems = items.map((item) => ({
-      bill_id: bill.id,
-      product_id: item.product_id,
-      size_id: item.size_id || null,
-      product_name: item.product_name,
-      size_label: item.size_label || null,
-      qty: item.qty,
-      price: item.price,
-      subtotal: item.effective_subtotal,
-      discount_type: item.discount_type,
-      discount_value: item.discount_value,
-      discount_amount: item.discount_amount,
-    }));
-
-    const { error: itemsError } = await supabase.from("bill_items").insert(billItems);
-
-    if (itemsError) {
-      await supabase.from("bills").delete().eq("id", bill.id);
-      toast.error("Failed to save items: " + itemsError.message);
-      setLoading(false);
-      return;
-    }
-
-    // Decrement stock for each item
-    for (const item of items) {
-      if (item.qty > 0) {
-        await supabase.rpc("decrement_stock", {
-          p_product_id: item.product_id,
-          p_qty: item.qty,
-        });
-      }
-    }
-
-    toast.success(`Bill ${billNumber} created`);
     const billIsPaid = paymentMethod !== "credit" && !(paymentMethod === "split" && parseFloat(splitCredit) > 0);
-    router.push(`/bills/${bill.id}${billIsPaid ? "?autoprint=true" : ""}`);
+
+    try {
+      const bill = await createBillOffline(
+        {
+          bill_number: billNumber,
+          customer_name: customerName || null,
+          customer_phone: customerPhone || null,
+          school_id: selectedSchool || null,
+          subtotal,
+          discount: discountNum,
+          total,
+          payment_method: paymentMethod,
+          payment_details: paymentMethod === "split" ? (() => {
+            const details: { method: string; amount: number }[] = [];
+            const cashAmt = parseFloat(splitCash) || 0;
+            const upiAmt = parseFloat(splitUpi) || 0;
+            const creditAmt = parseFloat(splitCredit) || 0;
+            if (cashAmt > 0) details.push({ method: "cash", amount: cashAmt });
+            if (upiAmt > 0) details.push({ method: "upi", amount: upiAmt });
+            if (creditAmt > 0) details.push({ method: "credit", amount: creditAmt });
+            return details.length > 0 ? details : null;
+          })() : null,
+          notes: notes || null,
+          is_paid: billIsPaid,
+          paid_at: billIsPaid ? new Date().toISOString() : null,
+          status: "active",
+        },
+        items.map((item) => ({
+          product_id: item.product_id,
+          size_id: item.size_id || null,
+          product_name: item.product_name,
+          size_label: item.size_label || null,
+          qty: item.qty,
+          price: item.price,
+          subtotal: item.effective_subtotal,
+          discount_type: item.discount_type,
+          discount_value: item.discount_value,
+          discount_amount: item.discount_amount,
+        }))
+      );
+
+      for (const item of items) {
+        if (item.qty > 0) {
+          await decrementStock(item.product_id, item.qty);
+        }
+      }
+
+      toast.success(`Bill ${billNumber} created`);
+      router.push(`/bills/${(bill as any).id}${billIsPaid ? "?autoprint=true" : ""}`);
+    } catch (err: any) {
+      toast.error("Failed to create bill: " + (err?.message || "Unknown error"));
+      setLoading(false);
+    }
   }
 
   return (

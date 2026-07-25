@@ -21,11 +21,7 @@ import {
 } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-
-interface SchoolGroup {
-  id: string;
-  name: string;
-}
+import { getSchoolGroups } from "@/lib/data";
 
 export default function NewSchoolPage() {
   const [name, setName] = useState("");
@@ -33,17 +29,15 @@ export default function NewSchoolPage() {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [schoolGroupId, setSchoolGroupId] = useState("");
-  const [schoolGroups, setSchoolGroups] = useState<SchoolGroup[]>([]);
+  const [schoolGroups, setSchoolGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
   const supabase = createClient();
 
   useEffect(() => {
-    supabase.from("school_groups").select("id, name").order("sort_order").then(({ data }) => {
-      if (data) setSchoolGroups(data);
-    });
-  }, [supabase]);
+    getSchoolGroups().then(setSchoolGroups);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

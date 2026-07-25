@@ -22,11 +22,7 @@ import {
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-
-interface SchoolGroup {
-  id: string;
-  name: string;
-}
+import { getSchool, getSchoolGroups } from "@/lib/data";
 
 export default function EditSchoolPage() {
   const router = useRouter();
@@ -39,28 +35,28 @@ export default function EditSchoolPage() {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [schoolGroupId, setSchoolGroupId] = useState("");
-  const [schoolGroups, setSchoolGroups] = useState<SchoolGroup[]>([]);
+  const [schoolGroups, setSchoolGroups] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [schoolRes, groupsRes] = await Promise.all([
-        supabase.from("schools").select("*").eq("id", id).single(),
-        supabase.from("school_groups").select("id, name").order("sort_order"),
+      const [schoolData, groupsData] = await Promise.all([
+        getSchool(id),
+        getSchoolGroups(),
       ]);
-      if (schoolRes.data) {
-        setName(schoolRes.data.name || "");
-        setShortCode(schoolRes.data.short_code || "");
-        setAddress(schoolRes.data.address || "");
-        setPhone(schoolRes.data.phone || "");
-        setSchoolGroupId(schoolRes.data.school_group_id || "");
+      if (schoolData) {
+        setName(schoolData.name || "");
+        setShortCode(schoolData.short_code || "");
+        setAddress(schoolData.address || "");
+        setPhone(schoolData.phone || "");
+        setSchoolGroupId(schoolData.school_group_id || "");
       }
-      if (groupsRes.data) setSchoolGroups(groupsRes.data);
+      setSchoolGroups(groupsData);
       setLoaded(true);
     }
     load();
-  }, [supabase, id]);
+  }, [id]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
