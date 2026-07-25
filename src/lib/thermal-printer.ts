@@ -235,157 +235,39 @@ export function generateReceipt(
   return receipt;
 }
 
-let device: BluetoothDevice | null = null;
-let characteristic: BluetoothRemoteGATTCharacteristic | null = null;
-let reconnectAttempted = false;
+// ── BLE connection (delegates to platform abstraction) ──
+
+import {
+  connectToPrinter as bleConnect,
+  isPrinterConnected as bleIsConnected,
+  disconnectPrinter as bleDisconnect,
+  printReceipt as blePrint,
+  tryReconnect as bleReconnect,
+} from "@/lib/printer-ble";
 
 export async function tryReconnect(onStatus?: (msg: string) => void): Promise<boolean> {
-  if (reconnectAttempted) return isPrinterConnected();
-  reconnectAttempted = true;
-
-  if (!navigator.bluetooth) return false;
-
-  try {
-    const devices = await navigator.bluetooth.getDevices();
-    if (devices.length === 0) return false;
-
-    for (const d of devices) {
-      try {
-        device = d;
-        const server = await d.gatt?.connect();
-        if (!server) continue;
-
-        for (const uuid of [
-          "000018f0-0000-1000-8000-00805f9b34fb",
-          "0000fee7-0000-1000-8000-00805f9b34fb",
-        ]) {
-          try {
-            const service = await server.getPrimaryService(uuid);
-            const chars = await service.getCharacteristics();
-            const writeChar = chars.find((c) => c.properties.write);
-            if (writeChar) {
-              characteristic = writeChar;
-              onStatus?.(`Reconnected to ${d.name || "printer"}`);
-              return true;
-            }
-          } catch {
-            // Try next UUID
-          }
-        }
-      } catch {
-        // Try next device
-      }
-    }
-    return false;
-  } catch {
-    return false;
-  }
+  return bleReconnect(onStatus);
 }
 
 export async function connectToPrinter(
   onStatus?: (msg: string) => void
 ): Promise<boolean> {
-  try {
-    if (!navigator.bluetooth) {
-      onStatus?.("Bluetooth not supported in this browser");
-      return false;
-    }
-
-    onStatus?.("Searching for printer...");
-
-    device = await navigator.bluetooth.requestDevice({
-      filters: [
-        { services: ["000018f0-0000-1000-8000-00805f9b34fb"] },
-      ],
-      optionalServices: [
-        "000018f0-0000-1000-8000-00805f9b34fb",
-        "0000fee7-0000-1000-8000-00805f9b34fb",
-      ],
-    });
-
-    onStatus?.(`Connecting to ${device.name || "printer"}...`);
-
-    const server = await device.gatt?.connect();
-    if (!server) {
-      onStatus?.("Failed to connect");
-      return false;
-    }
-
-    let service: BluetoothGATTService | null = null;
-    const serviceUUIDs = [
-      "000018f0-0000-1000-8000-00805f9b34fb",
-      "0000fee7-0000-1000-8000-00805f9b34fb",
-    ];
-
-    for (const uuid of serviceUUIDs) {
-      try {
-        service = await server.getPrimaryService(uuid);
-        if (service) break;
-      } catch {
-        // Try next UUID
-      }
-    }
-
-    if (!service) {
-      onStatus?.("Could not find printer service");
-      return false;
-    }
-
-    const characteristics = await service.getCharacteristics();
-    characteristic = characteristics.find((c) => c.properties.write) || null;
-
-    if (!characteristic) {
-      onStatus?.("Could not find write characteristic");
-      return false;
-    }
-
-    onStatus?.(`Connected to ${device.name || "printer"}!`);
-    return true;
-  } catch (error) {
-    onStatus?.(`Connection failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-    return false;
-  }
+  return bleConnect(onStatus);
 }
 
 export function isPrinterConnected(): boolean {
-  return device?.gatt?.connected === true && characteristic !== null;
+  return bleIsConnected();
 }
 
 export function disconnectPrinter() {
-  if (device?.gatt?.connected) {
-    device.gatt.disconnect();
-  }
-  device = null;
-  characteristic = null;
+  bleDisconnect();
 }
 
 export async function printReceipt(
   receiptText: string,
   onStatus?: (msg: string) => void
 ): Promise<boolean> {
-  if (!characteristic) {
-    onStatus?.("Printer not connected");
-    return false;
-  }
-
-  try {
-    onStatus?.("Printing...");
-
-    const encoder = new TextEncoder();
-    const data = encoder.encode(receiptText);
-
-    const CHUNK_SIZE = 200;
-    for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-      const chunk = data.slice(i, i + CHUNK_SIZE);
-      await characteristic.writeValue(chunk);
-    }
-
-    onStatus?.("Printed!");
-    return true;
-  } catch (error) {
-    onStatus?.(`Print failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-    return false;
-  }
+  return blePrint(receiptText, onStatus);
 }
 
 export async function printBillById(
