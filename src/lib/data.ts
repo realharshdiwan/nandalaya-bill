@@ -250,42 +250,39 @@ export async function getSizesForProduct(productId: string): Promise<Size[]> {
 
 // ── Offline-first bill creation ──
 
-function nextLocalBillNumber(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const dayOfYear = Math.floor((now.getTime() - new Date(year, 0, 0).getTime()) / 86400000);
-  const time = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  const suffix = `${String(dayOfYear).padStart(3, "0")}${String(time).padStart(5, "0")}`;
-  return `NY-${year}-${suffix}`;
-}
-
 export async function generateBillNumber(): Promise<string | null> {
-  const year = new Date().getFullYear();
-  const lastStored = await db.shop_config.get("last_bill_number");
-  let seq = 9000;
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  const fy = month >= 4 ? year : year - 1;
+
+  // Try RPC first for atomic sequence when online
+  try {
+    const supabase = createClient();
+    const { data } = await supabase.rpc("generate_bill_number");
+    if (data) {
+      await db.shop_config.put({ key: "bill_sequence_sg", value: data });
+      return data;
+    }
+  } catch {
+    // offline — fall through to local counter
+  }
+
+  // Local sequence fallback
+  const lastStored = await db.shop_config.get("bill_sequence_sg");
+  let seq = 0;
   if (lastStored) {
-    const match = lastStored.value.match(/NY-(\d{4})-(\d{4})/);
+    const match = lastStored.value.match(/SG-(\d{4})-(\d{4})/);
     if (match) {
-      const lastYear = parseInt(match[1]);
-      const lastSeq = parseInt(match[2]);
-      if (lastYear === year) {
-        seq = lastSeq + 1;
+      const lastFy = parseInt(match[1]);
+      if (lastFy === fy) {
+        seq = parseInt(match[2]);
       }
     }
   }
-  const formatted = `NY-${year}-${String(seq).padStart(4, "0")}`;
-  await db.shop_config.put({ key: "last_bill_number", value: formatted });
-
-  // Background refresh from Supabase RPC when online
-  if (navigator.onLine) {
-    const supabase = createClient();
-    supabase.rpc("generate_bill_number").then(({ data }) => {
-      if (data) {
-        db.shop_config.put({ key: "last_bill_number", value: data });
-      }
-    });
-  }
-
+  seq += 1;
+  const formatted = `SG-${fy}-${String(seq).padStart(4, "0")}`;
+  await db.shop_config.put({ key: "bill_sequence_sg", value: formatted });
   return formatted;
 }
 

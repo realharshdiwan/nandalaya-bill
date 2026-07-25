@@ -1,4 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -7,83 +10,89 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Receipt, Plus, Search, ChevronLeft, ChevronRight } from "lucide-react";
-
-export const dynamic = "force-dynamic";
-
-interface BillListRow {
-  id: string;
-  bill_number: string;
-  customer_name: string | null;
-  customer_phone: string | null;
-  total: number;
-  payment_method: string;
-  is_paid: boolean;
-  created_at: string;
-  status: string;
-  schools: { name: string; short_code: string | null }[] | { name: string; short_code: string | null };
-}
+import db from "@/lib/db";
+import { initData } from "@/lib/data";
 
 const PAGE_SIZE = 20;
 
-export default async function BillsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}) {
-  const params = await searchParams;
-  const supabase = await createClient();
+export default function BillsPage() {
+  const searchParams = useSearchParams();
+  const [bills, setBills] = useState<any[]>([]);
+  const [schools, setSchools] = useState<Record<string, any>>({});
+  const [loaded, setLoaded] = useState(false);
 
-  const showVoided = typeof params.show_voided === "string";
-  const dateRange = typeof params.date === "string" ? params.date : "all";
-  const page = Math.max(1, parseInt(typeof params.page === "string" ? params.page : "1", 10) || 1);
-  const from = (page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
+  useEffect(() => {
+    initData().then(async () => {
+      const all = await db.bills.orderBy("created_at").reverse().toArray();
+      setBills(all);
+      const schoolList = await db.schools.toArray();
+      setSchools(Object.fromEntries(schoolList.map((s) => [s.id, s])));
+      setLoaded(true);
+    });
+  }, []);
 
-  let countQuery = supabase
-    .from("bills")
-    .select("id", { count: "exact", head: true });
+  const showVoided = searchParams.has("show_voided");
+  const dateRange = searchParams.get("date") || "all";
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const search = searchParams.get("search") || "";
 
-  let query = supabase
-    .from("bills")
-    .select("id, bill_number, customer_name, customer_phone, total, payment_method, is_paid, created_at, status, schools(name, short_code)")
-    .order("created_at", { ascending: false })
-    .range(from, to);
+  const filtered = useMemo(() => {
+    let list = bills;
 
-  if (!showVoided) {
-    query = query.eq("status", "active");
-    countQuery = countQuery.eq("status", "active");
+    if (!showVoided) {
+      list = list.filter((b) => b.status !== "voided");
+    }
+
+    const now = new Date();
+    if (dateRange === "today") {
+      const todayStr = now.toISOString().split("T")[0];
+      list = list.filter((b) => b.created_at >= todayStr);
+    } else if (dateRange === "week") {
+      const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString();
+      list = list.filter((b) => b.created_at >= weekAgo);
+    } else if (dateRange === "month") {
+      const monthAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
+      list = list.filter((b) => b.created_at >= monthAgo);
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (b) =>
+          b.bill_number?.toLowerCase().includes(q) ||
+          b.customer_name?.toLowerCase().includes(q) ||
+          b.customer_phone?.includes(q)
+      );
+    }
+
+    return list;
+  }, [bills, showVoided, dateRange, search]);
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const buildHref = (p: number) => {
+    const sp = new URLSearchParams();
+    if (search) sp.set("search", search);
+    if (dateRange !== "all") sp.set("date", dateRange);
+    if (showVoided) sp.set("show_voided", "1");
+    sp.set("page", String(p));
+    return `/bills?${sp.toString()}`;
+  };
+
+  if (!loaded) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)] uppercase">BILLS</h1>
+          </div>
+        </div>
+        <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-20 animate-pulse rounded-[12px] bg-white/20" />)}</div>
+      </div>
+    );
   }
-
-  const now = new Date();
-  if (dateRange === "today") {
-    const todayStr = now.toISOString().split("T")[0];
-    query = query.gte("created_at", todayStr);
-    countQuery = countQuery.gte("created_at", todayStr);
-  } else if (dateRange === "week") {
-    const weekAgo = new Date(now);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    query = query.gte("created_at", weekAgo.toISOString());
-    countQuery = countQuery.gte("created_at", weekAgo.toISOString());
-  } else if (dateRange === "month") {
-    const monthAgo = new Date(now);
-    monthAgo.setDate(monthAgo.getDate() - 30);
-    query = query.gte("created_at", monthAgo.toISOString());
-    countQuery = countQuery.gte("created_at", monthAgo.toISOString());
-  }
-
-  const search = typeof params.search === "string" ? params.search : "";
-  if (search) {
-    const filter = `bill_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%`;
-    query = query.or(filter);
-    countQuery = countQuery.or(filter);
-  }
-
-  const [{ data: bills }, { count: total }] = await Promise.all([
-    query,
-    countQuery,
-  ]);
-
-  const totalPages = Math.max(1, Math.ceil((total || 0) / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
@@ -93,7 +102,7 @@ export default async function BillsPage({
             BILLS
           </h1>
           <p className="mt-1 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-            {total || 0} BILLS
+            {total} BILLS
           </p>
         </div>
         <Link href="/bills/new">
@@ -105,7 +114,7 @@ export default async function BillsPage({
       </div>
 
       <div className="flex gap-3">
-        <form className="relative flex-1">
+        <form className="relative flex-1" method="GET">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4D8A6B]" />
           {showVoided && <input type="hidden" name="show_voided" value="1" />}
           {dateRange !== "all" && <input type="hidden" name="date" value={dateRange} />}
@@ -145,11 +154,11 @@ export default async function BillsPage({
         })}
       </div>
 
-      {bills && bills.length > 0 ? (
+      {paged.length > 0 ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            {bills.map((bill: BillListRow) => {
-              const school = Array.isArray(bill.schools) ? bill.schools[0] : bill.schools;
+            {paged.map((bill: any) => {
+              const school = bill.school_id ? schools[bill.school_id] : null;
               const isVoided = bill.status === "voided";
               return (
                 <Link key={bill.id} href={`/bills/${bill.id}`}>
@@ -196,33 +205,23 @@ export default async function BillsPage({
             })}
           </div>
 
-          {totalPages > 1 && (() => {
-            const buildHref = (p: number) => {
-              const sp = new URLSearchParams();
-              if (search) sp.set("search", search);
-              if (dateRange !== "all") sp.set("date", dateRange);
-              if (showVoided) sp.set("show_voided", "1");
-              sp.set("page", String(p));
-              return `/bills?${sp.toString()}`;
-            };
-            return (
-              <div className="flex items-center justify-center gap-2">
-                <Link href={buildHref(page - 1)}>
-                  <Button variant="tertiary" size="xs" className={page <= 1 ? "pointer-events-none opacity-40" : ""}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                </Link>
-                <span className="text-[14px] text-white [font-family:var(--font-oswald)] uppercase font-bold">
-                  {page} / {totalPages}
-                </span>
-                <Link href={buildHref(page + 1)}>
-                  <Button variant="tertiary" size="xs" className={page >= totalPages ? "pointer-events-none opacity-40" : ""}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            );
-          })()}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <Link href={buildHref(page - 1)}>
+                <Button variant="tertiary" size="xs" className={page <= 1 ? "pointer-events-none opacity-40" : ""}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              </Link>
+              <span className="text-[14px] text-white [font-family:var(--font-oswald)] uppercase font-bold">
+                {page} / {totalPages}
+              </span>
+              <Link href={buildHref(page + 1)}>
+                <Button variant="tertiary" size="xs" className={page >= totalPages ? "pointer-events-none opacity-40" : ""}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
       ) : (
         <div className="text-center py-12">

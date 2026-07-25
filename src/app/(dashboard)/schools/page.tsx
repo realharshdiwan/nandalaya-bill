@@ -1,4 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -6,15 +8,35 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { School, Plus } from "lucide-react";
+import { getSchools } from "@/lib/data";
 
-export default async function SchoolsPage() {
-  const supabase = await createClient();
+export default function SchoolsPage() {
+  const [schools, setSchools] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
-  const { data: schools } = await supabase
-    .from("schools")
-    .select("id, name, short_code, is_active")
-    .eq("is_active", true)
-    .order("name");
+  useEffect(() => {
+    getSchools().then((data) => {
+      setSchools(data);
+      setLoaded(true);
+    });
+  }, []);
+
+  if (!loaded) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-[28px] font-bold text-white [font-family:var(--font-oswald)]">SCHOOLS</h1>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 animate-pulse rounded-[12px] bg-white/20" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -24,7 +46,7 @@ export default async function SchoolsPage() {
             SCHOOLS
           </h1>
           <p className="mt-1 text-[14px] text-[#B3D6BF] [font-family:var(--font-oswald)] uppercase font-bold">
-            {schools?.length || 0} SCHOOLS
+            {schools.length} SCHOOLS
           </p>
         </div>
         <Link href="/schools/new">
@@ -35,7 +57,7 @@ export default async function SchoolsPage() {
         </Link>
       </div>
 
-      {schools && schools.length > 0 ? (
+      {schools.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {schools.map((school) => (
             <Link key={school.id} href={`/schools/${school.id}`}>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Nandalaya</string>
+    <string name="title_activity_main">Nandalaya</string>
+    <string name="package_name">com.nandalaya.bill</string>
+    <string name="custom_url_scheme">com.nandalaya.bill</string>
+</resources>

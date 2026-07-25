@@ -1,6 +1,16 @@
 import { withSerwist } from "@serwist/turbopack";
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {};
+const isStatic = process.env.NEXT_PUBLIC_STATIC_EXPORT === "true";
 
-export default withSerwist(nextConfig);
+const nextConfig: NextConfig = {
+  ...(isStatic
+    ? {
+        output: "export",
+        images: { unoptimized: true },
+        typescript: { ignoreBuildErrors: true },
+      }
+    : {}),
+};
+
+export default isStatic ? nextConfig : withSerwist(nextConfig);

@@ -8,9 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "mobile:sync": "mkdir -p out && npx cap sync",
-    "mobile:dev": "CAPACITOR_DEV=true npm run mobile:sync",
+    "mobile:dev": "CAPACITOR_SERVER_URL=http://192.168.1.100:3000 CAPACITOR_DEV=true npm run mobile:sync",
     "mobile:open": "npx cap open android",
-    "mobile:apk": "cd android && ./gradlew assembleDebug && cd .."
+    "mobile:apk": "cd android && ./gradlew assembleDebug && cd ..",
+    "mobile:build": "bash scripts/build-apk.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
