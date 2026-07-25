@@ -1,14 +1,16 @@
 import { createClient } from "@/lib/supabase/client";
 import db, { type PriceEntry, type School, type Product, type Size, type SizeGroup } from "@/lib/db";
-import { syncAll, syncPriceListForSchool, syncPricesForGroup, flushOfflineQueue } from "@/lib/sync";
+import { syncAll, flushOfflineQueue } from "@/lib/sync";
 
 let initialSyncDone = false;
 
 export async function initData() {
   if (initialSyncDone) return;
   initialSyncDone = true;
-  await syncAll();
-  await flushOfflineQueue();
+  if (navigator.onLine) {
+    await syncAll();
+    await flushOfflineQueue();
+  }
 }
 
 export function onOnline(callback: () => void) {
@@ -19,84 +21,27 @@ export function onOnline(callback: () => void) {
 // ── Schools ──
 
 export async function getSchools(): Promise<School[]> {
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const { data } = await supabase.from("schools").select("*").eq("is_active", true).order("name");
-    if (data) {
-      await db.schools.clear();
-      await db.schools.bulkAdd(data as any[]);
-      return data as School[];
-    }
-  }
   const cached = await db.schools.toArray();
   return cached.filter((s) => s.is_active).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getSchool(id: string): Promise<School | null> {
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const { data } = await supabase.from("schools").select("*").eq("id", id).single();
-    if (data) {
-      await db.schools.put(data as any);
-      return data as School;
-    }
-  }
   return (await db.schools.get(id)) || null;
 }
 
 // ── Products ──
 
 export async function getProducts(): Promise<Product[]> {
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const { data } = await supabase.from("products").select("*").order("sort_order").order("name");
-    if (data) {
-      await db.products.clear();
-      await db.products.bulkAdd(data as any[]);
-      return data as Product[];
-    }
-  }
   return db.products.toArray();
 }
 
 // ── Sizes ──
 
 export async function getSizes(): Promise<Size[]> {
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const { data } = await supabase.from("sizes").select("*");
-    if (data) {
-      await db.sizes.clear();
-      await db.sizes.bulkAdd(data as any[]);
-      return data as Size[];
-    }
-  }
   return db.sizes.toArray();
 }
 
 export async function getSizeGroups(): Promise<SizeGroup[]> {
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const [groupsRes, itemsRes, sizesRes] = await Promise.all([
-      supabase.from("size_groups").select("*").order("sort_order"),
-      supabase.from("size_group_items").select("size_group_id, size_id, sort_order").order("sort_order"),
-      supabase.from("sizes").select("*"),
-    ]);
-
-    if (groupsRes.data) { await db.size_groups.clear(); await db.size_groups.bulkAdd(groupsRes.data as any[]); }
-    if (itemsRes.data) { await db.size_group_items.clear(); await db.size_group_items.bulkAdd(itemsRes.data as any[]); }
-    if (sizesRes.data) { await db.sizes.clear(); await db.sizes.bulkAdd(sizesRes.data as any[]); }
-
-    const allSizes = (sizesRes.data || []) as Size[];
-    return ((groupsRes.data || []) as any[]).map((g) => ({
-      ...g,
-      sizes: ((itemsRes.data || []) as any[])
-        .filter((i: any) => i.size_group_id === g.id)
-        .map((i: any) => allSizes.find((s) => s.id === i.size_id))
-        .filter(Boolean) as Size[],
-    }));
-  }
-
   const cached = await db.size_groups.toArray();
   const items = await db.size_group_items.toArray();
   if (cached.length === 0) return [];
@@ -130,10 +75,6 @@ async function enrichPrices(prices: PriceEntry[]) {
 }
 
 export async function getPricesForSchool(schoolId: string) {
-  if (navigator.onLine) {
-    await syncPriceListForSchool(schoolId);
-  }
-
   const schoolPrices = await db.price_list
     .where("school_id")
     .equals(schoolId)
@@ -155,140 +96,41 @@ export async function getPricesForSchool(schoolId: string) {
 }
 
 export async function getPricesForGroup(groupId: string) {
-  if (navigator.onLine) {
-    await syncPricesForGroup(groupId);
-  }
   const prices = await db.price_list.where("school_group_id").equals(groupId).toArray();
   return enrichPrices(prices);
 }
 
 // ── Bills ──
 
-export async function createBill(bill: any, items: any[]) {
-  const supabase = createClient();
-
-  const { data: billData, error } = await supabase
-    .from("bills")
-    .insert(bill)
-    .select()
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  const billId = (billData as any).id;
-  const billItems = items.map((item) => ({ ...item, bill_id: billId }));
-
-  const { error: itemsError } = await supabase.from("bill_items").insert(billItems);
-  if (itemsError) throw itemsError;
-
-  await db.bills.put({ ...billData, synced: 1 } as any);
-  await db.bill_items.bulkAdd(
-    billItems.map((item, i) => ({
-      ...item,
-      id: `${billData.id}-item-${i}`,
-    }))
-  );
-
-  return billData;
-}
-
 export async function getBills(options?: { limit?: number; schoolId?: string }) {
-  if (navigator.onLine) {
-    const supabase = createClient();
-    let supabaseQuery = supabase
-      .from("bills")
-      .select("*, bill_items(*)")
-      .order("created_at", { ascending: false })
-      .limit(options?.limit || 50);
-
-    if (options?.schoolId) {
-      supabaseQuery = supabaseQuery.eq("school_id", options.schoolId);
-    }
-
-    const { data } = await supabaseQuery;
-    if (data) {
-      await db.bills.clear();
-      await db.bill_items.clear();
-      const bills: any[] = [];
-      const items: any[] = [];
-      for (const row of data) {
-        const itemRows = Array.isArray(row.bill_items) ? row.bill_items : [];
-        bills.push({ ...row, bill_items: undefined, synced: 1 });
-        for (const item of itemRows) {
-          items.push(item);
-        }
-      }
-      await db.bills.bulkAdd(bills);
-      if (items.length > 0) await db.bill_items.bulkAdd(items);
-      return bills;
-    }
+  let cached = await db.bills.orderBy("created_at").reverse().toArray();
+  if (options?.schoolId) {
+    cached = cached.filter((b: any) => b.school_id === options.schoolId);
   }
-
-  const cached = await db.bills.orderBy("created_at").reverse().limit(options?.limit || 50).toArray();
-  return options?.schoolId
-    ? cached.filter((b: any) => b.school_id === options.schoolId)
-    : cached;
+  if (options?.limit) {
+    cached = cached.slice(0, options.limit);
+  }
+  return cached;
 }
 
 export async function getBill(id: string) {
   const cached = await db.bills.get(id);
-  if (cached) {
-    const items = await db.bill_items.where("bill_id").equals(id).toArray();
-    return { bill: cached, items };
-  }
-
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("bills")
-      .select("*, bill_items(*)")
-      .eq("id", id)
-      .single();
-
-    if (data) {
-      const itemRows = Array.isArray((data as any).bill_items) ? (data as any).bill_items : [];
-      const bill = { ...data, bill_items: undefined, synced: 1 } as any;
-      await db.bills.put(bill);
-      if (itemRows.length > 0) await db.bill_items.bulkAdd(itemRows);
-      return { bill, items: itemRows };
-    }
-  }
-
-  return null;
+  if (!cached) return null;
+  const items = await db.bill_items.where("bill_id").equals(id).toArray();
+  return { bill: cached, items };
 }
 
 // ── Shop config ──
 
 export async function getShopConfig(key: string): Promise<string | null> {
   const cached = await db.shop_config.get(key);
-  if (cached) return cached.value;
-
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const { data } = await supabase.from("shop_config").select("value").eq("key", key).single();
-    if (data) {
-      await db.shop_config.put({ key, value: data.value });
-      return data.value;
-    }
-  }
-  return null;
+  return cached?.value ?? null;
 }
 
 export async function getShopConfigAll(): Promise<Record<string, string>> {
   const cached = await db.shop_config.toArray();
-  if (cached.length > 0) return Object.fromEntries(cached.map((r) => [r.key, r.value]));
-
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const { data } = await supabase.from("shop_config").select("key, value");
-    if (data) {
-      await db.shop_config.bulkAdd(data);
-      return Object.fromEntries(data.map((r: any) => [r.key, r.value]));
-    }
-  }
-  return {};
+  if (cached.length === 0) return {};
+  return Object.fromEntries(cached.map((r) => [r.key, r.value]));
 }
 
 // ── School Groups ──
@@ -404,18 +246,18 @@ export async function getSizesForProduct(productId: string): Promise<Size[]> {
     .filter(Boolean) as Size[];
 }
 
-// ── Offline-friendly bill creation ──
+// ── Offline-first bill creation ──
+
+function nextLocalBillNumber(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const dayOfYear = Math.floor((now.getTime() - new Date(year, 0, 0).getTime()) / 86400000);
+  const time = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  const suffix = `${String(dayOfYear).padStart(3, "0")}${String(time).padStart(5, "0")}`;
+  return `NY-${year}-${suffix}`;
+}
 
 export async function generateBillNumber(): Promise<string | null> {
-  if (navigator.onLine) {
-    const supabase = createClient();
-    const { data, error } = await supabase.rpc("generate_bill_number");
-    if (!error && data) {
-      await db.shop_config.put({ key: "last_bill_number", value: data });
-      return data;
-    }
-  }
-
   const year = new Date().getFullYear();
   const lastStored = await db.shop_config.get("last_bill_number");
   let seq = 9000;
@@ -426,13 +268,22 @@ export async function generateBillNumber(): Promise<string | null> {
       const lastSeq = parseInt(match[2]);
       if (lastYear === year) {
         seq = lastSeq + 1;
-      } else {
-        seq = 9000;
       }
     }
   }
   const formatted = `NY-${year}-${String(seq).padStart(4, "0")}`;
   await db.shop_config.put({ key: "last_bill_number", value: formatted });
+
+  // Background refresh from Supabase RPC when online
+  if (navigator.onLine) {
+    const supabase = createClient();
+    supabase.rpc("generate_bill_number").then(({ data }) => {
+      if (data) {
+        db.shop_config.put({ key: "last_bill_number", value: data });
+      }
+    });
+  }
+
   return formatted;
 }
 
@@ -442,64 +293,19 @@ export async function decrementStock(productId: string, qty: number) {
       const supabase = createClient();
       await supabase.rpc("decrement_stock", { p_product_id: productId, p_qty: qty });
     } catch {
-      // stock decrement is best-effort
+      // best-effort
     }
   }
 }
 
-export async function createBillOffline(bill: any, items: any[]) {
-  const supabase = createClient();
-
-  if (navigator.onLine) {
-    const { data: billData, error } = await supabase
-      .from("bills")
-      .insert(bill)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    const billId = (billData as any).id;
-    const billItems = items.map((item) => ({ ...item, bill_id: billId }));
-
-    const { error: itemsError } = await supabase.from("bill_items").insert(billItems);
-    if (itemsError) {
-      await supabase.from("bills").delete().eq("id", billId);
-      throw itemsError;
-    }
-
-    await db.bills.put({ ...billData, synced: 1 } as any);
-    await db.bill_items.bulkAdd(
-      billItems.map((item, i) => ({
-        ...item,
-        id: `${billId}-item-${i}`,
-      }))
-    );
-
-    return billData;
-  }
-
-  const now = new Date().toISOString();
-  const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const offlineBill = { ...bill, id: tempId, synced: 0, created_at: bill.created_at || now };
-  const offlineItems = items.map((item) => ({
-    ...item,
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    bill_id: tempId,
-    created_at: now,
-  }));
-
-  await db.bills.put(offlineBill);
-  await db.bill_items.bulkAdd(offlineItems);
-
+async function addOfflineQueue(billData: any, itemRows: any[]) {
   await db.offline_queue.add({
     table: "bills",
     action: "insert",
-    data: bill,
+    data: billData,
     created_at: new Date().toISOString(),
   });
-
-  for (const item of items) {
+  for (const item of itemRows) {
     await db.offline_queue.add({
       table: "bill_items",
       action: "insert",
@@ -507,6 +313,50 @@ export async function createBillOffline(bill: any, items: any[]) {
       created_at: new Date().toISOString(),
     });
   }
+}
 
-  return offlineBill;
+async function syncBillToSupabase(billData: any, itemRows: any[]) {
+  try {
+    const supabase = createClient();
+    const { error: billError } = await supabase.from("bills").insert(billData);
+    if (billError) throw billError;
+    const items = itemRows.map(({ id: _id, ...rest }: any) => rest);
+    const { error: itemsError } = await supabase.from("bill_items").insert(items);
+    if (itemsError) {
+      await supabase.from("bills").delete().eq("id", billData.id);
+      throw itemsError;
+    }
+    await db.bills.update(billData.id, { synced: 1 });
+  } catch {
+    await addOfflineQueue(billData, itemRows);
+  }
+}
+
+export async function createBillOffline(bill: any, items: any[]) {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const itemRows = items.map((item, i) => ({
+    ...item,
+    id: `${id}-item-${i}`,
+    bill_id: id,
+    created_at: now,
+  }));
+
+  const billData = {
+    ...bill,
+    id,
+    synced: 0,
+    created_at: bill.created_at || now,
+  };
+
+  await db.bills.put(billData);
+  await db.bill_items.bulkAdd(itemRows);
+
+  if (navigator.onLine) {
+    syncBillToSupabase(billData, itemRows);
+  } else {
+    await addOfflineQueue(billData, itemRows);
+  }
+
+  return billData;
 }

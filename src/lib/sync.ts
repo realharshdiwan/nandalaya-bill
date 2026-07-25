@@ -123,63 +123,6 @@ async function syncBills(supabase: ReturnType<typeof createClient>) {
   }
 }
 
-export async function syncPriceListForSchool(schoolId: string) {
-  if (typeof window === "undefined") return;
-  if (!navigator.onLine) return;
-
-  const supabase = createClient();
-
-  const { data } = await supabase
-    .from("price_list")
-    .select("*")
-    .eq("school_id", schoolId)
-    .eq("is_active", true);
-
-  if (data) {
-    await db.price_list.where("school_id").equals(schoolId).delete();
-    await db.price_list.bulkAdd(data as any[]);
-  }
-
-  const { data: school } = await supabase
-    .from("schools")
-    .select("school_group_id")
-    .eq("id", schoolId)
-    .single();
-
-  const groupId = (school as { school_group_id: string | null } | null)?.school_group_id;
-  if (groupId) {
-    const { data: groupPrices } = await supabase
-      .from("price_list")
-      .select("*")
-      .eq("school_group_id", groupId)
-      .eq("is_active", true);
-
-    if (groupPrices) {
-      const existing = await db.price_list.where("school_group_id").equals(groupId).toArray();
-      if (existing.length === 0) {
-        await db.price_list.bulkAdd(groupPrices as any[]);
-      }
-    }
-  }
-}
-
-export async function syncPricesForGroup(groupId: string) {
-  if (typeof window === "undefined") return;
-  if (!navigator.onLine) return;
-
-  const supabase = createClient();
-  const { data } = await supabase
-    .from("price_list")
-    .select("*")
-    .eq("school_group_id", groupId)
-    .eq("is_active", true);
-
-  if (data) {
-    await db.price_list.where("school_group_id").equals(groupId).delete();
-    await db.price_list.bulkAdd(data as any[]);
-  }
-}
-
 export async function flushOfflineQueue() {
   if (typeof window === "undefined") return;
   if (!navigator.onLine) return;
@@ -191,6 +134,9 @@ export async function flushOfflineQueue() {
     try {
       if (entry.action === "insert") {
         await supabase.from(entry.table).insert(entry.data as any);
+        if (entry.table === "bills") {
+          await db.bills.update((entry.data as any).id, { synced: 1 });
+        }
       } else if (entry.action === "update") {
         const { id, ...rest } = entry.data as any;
         if (id) {

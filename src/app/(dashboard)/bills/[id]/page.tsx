@@ -45,13 +45,12 @@ export default function BillDetailPage() {
       const hasUpi =
         result.bill.payment_method === "upi" ||
         result.bill.payment_method === "split" ||
-        (result.bill.payment_details &&
-          result.bill.payment_details.some((p: any) => p.method === "upi"));
+        ((result.bill.payment_details as any[])?.some((p: any) => p.method === "upi"));
 
       if (hasUpi) {
         let upiAmount = result.bill.total;
         if (result.bill.payment_details) {
-          const upiPart = result.bill.payment_details.find((p: any) => p.method === "upi");
+          const upiPart = (result.bill.payment_details as any[])?.find((p: any) => p.method === "upi");
           if (upiPart) upiAmount = upiPart.amount;
         }
         const upiId = config.upi_id || "";
