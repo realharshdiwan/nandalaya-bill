@@ -448,12 +448,14 @@ export async function createBillOffline(bill: any, items: any[]) {
     return billData;
   }
 
+  const now = new Date().toISOString();
   const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const offlineBill = { ...bill, id: tempId, synced: 0 };
+  const offlineBill = { ...bill, id: tempId, synced: 0, created_at: bill.created_at || now };
   const offlineItems = items.map((item) => ({
     ...item,
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     bill_id: tempId,
+    created_at: now,
   }));
 
   await db.bills.put(offlineBill);

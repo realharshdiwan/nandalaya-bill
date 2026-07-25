@@ -315,11 +315,17 @@ export default function BillDetailPage() {
             <div>
               <p className="text-[#4D8A6B] [font-family:var(--font-oswald)] uppercase font-bold">DATE</p>
               <p className="font-bold text-[#00592B] [font-family:var(--font-oswald)]">
-                {new Date(bill.created_at).toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })}
+                {bill.created_at
+                  ? new Date(bill.created_at).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : new Date().toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
               </p>
             </div>
             {bill.customer_name && (
