@@ -4,12 +4,44 @@ import { useState, useEffect } from "react";
 import { flushOfflineQueue } from "@/lib/sync";
 import { Wifi, WifiOff, RefreshCw } from "lucide-react";
 
+function isCapacitor(): boolean {
+  return typeof window !== "undefined" && !!(window as any).Capacitor;
+}
+
+async function getNetworkStatus(): Promise<boolean> {
+  if (isCapacitor()) {
+    try {
+      const { Network } = await import("@capacitor/network");
+      const status = await Network.getStatus();
+      return status.connected;
+    } catch {
+      return navigator.onLine;
+    }
+  }
+  return navigator.onLine;
+}
+
 export default function OfflineBanner() {
   const [offline, setOffline] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
-    setOffline(!navigator.onLine);
+    getNetworkStatus().then((connected) => setOffline(!connected));
+
+    if (isCapacitor()) {
+      import("@capacitor/network").then(({ Network }) => {
+        Network.addListener("networkStatusChange", (status) => {
+          if (status.connected) {
+            setOffline(false);
+            setSyncing(true);
+            flushOfflineQueue().finally(() => setSyncing(false));
+          } else {
+            setOffline(true);
+          }
+        });
+      });
+      return;
+    }
 
     const goOffline = () => setOffline(true);
     const goOnline = async () => {

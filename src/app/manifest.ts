@@ -1,5 +1,8 @@
 import type { MetadataRoute } from "next";
 
+// Static export (Capacitor) needs a static JSON, not a route handler
+export const dynamic = "force-static";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",

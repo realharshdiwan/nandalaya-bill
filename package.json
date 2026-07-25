@@ -6,10 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "mobile:sync": "mkdir -p out && npx cap sync",
+    "mobile:dev": "CAPACITOR_DEV=true npm run mobile:sync",
+    "mobile:open": "npx cap open android",
+    "mobile:apk": "cd android && ./gradlew assembleDebug && cd .."
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/network": "^8.0.1",
     "@hookform/resolvers": "^5.4.0",
     "@serwist/sw": "^9.5.12",
     "@supabase/ssr": "^0.12.0",
