@@ -117,7 +117,24 @@ export async function getSizeGroups(): Promise<SizeGroup[]> {
 
 // ── Prices ──
 
-export async function getPricesForSchool(schoolId: string): Promise<PriceEntry[]> {
+async function enrichPrices(prices: PriceEntry[]) {
+  const products = await getProducts();
+  const allSizes = await getSizes();
+  const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
+  const sizeMap = Object.fromEntries(allSizes.map((s) => [s.id, s]));
+
+  return prices.map((p) => {
+    const product = productMap[p.product_id];
+    const size = p.size_id ? sizeMap[p.size_id] : null;
+    return {
+      ...p,
+      products: product || null,
+      sizes: size || null,
+    };
+  });
+}
+
+export async function getPricesForSchool(schoolId: string) {
   await syncPriceListForSchool(schoolId);
 
   const schoolPrices = await db.price_list
@@ -132,15 +149,18 @@ export async function getPricesForSchool(schoolId: string): Promise<PriceEntry[]
     : [];
 
   const schoolKeys = new Set(schoolPrices.map((p) => `${p.product_id}-${p.size_id || ""}`));
-  return [
+  const merged = [
     ...schoolPrices,
     ...groupPrices.filter((p) => !schoolKeys.has(`${p.product_id}-${p.size_id || ""}`)),
   ];
+
+  return enrichPrices(merged);
 }
 
-export async function getPricesForGroup(groupId: string): Promise<PriceEntry[]> {
+export async function getPricesForGroup(groupId: string) {
   await syncPricesForGroup(groupId);
-  return db.price_list.where("school_group_id").equals(groupId).toArray();
+  const prices = await db.price_list.where("school_group_id").equals(groupId).toArray();
+  return enrichPrices(prices);
 }
 
 // ── Bills ──
@@ -391,8 +411,12 @@ export async function generateBillNumber(): Promise<string | null> {
 
 export async function decrementStock(productId: string, qty: number) {
   if (navigator.onLine) {
-    const supabase = createClient();
-    await supabase.rpc("decrement_stock", { p_product_id: productId, p_qty: qty });
+    try {
+      const supabase = createClient();
+      await supabase.rpc("decrement_stock", { p_product_id: productId, p_qty: qty });
+    } catch {
+      // stock decrement is best-effort
+    }
   }
 }
 

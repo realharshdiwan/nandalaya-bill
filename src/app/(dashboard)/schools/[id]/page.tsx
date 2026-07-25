@@ -163,19 +163,18 @@ export default function SchoolDetailPage() {
         }))
       );
 
-      for (const item of cart) {
-        await decrementStock(item.product_id, item.qty);
-      }
-
       const { clearCart } = await import("@/lib/cart");
       clearCart();
 
       toast.success(`Bill ${billNumber} created`);
       const billIsPaid = quickPayment !== "credit";
       router.push(`/bills/${(bill as any).id}${billIsPaid ? "?autoprint=true" : ""}`);
+
+      for (const item of cart) {
+        decrementStock(item.product_id, item.qty);
+      }
     } catch (err: any) {
       toast.error("Failed to create bill: " + (err?.message || "Unknown error"));
-    } finally {
       setQuickSaving(false);
     }
   }

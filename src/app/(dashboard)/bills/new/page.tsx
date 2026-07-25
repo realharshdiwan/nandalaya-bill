@@ -339,14 +339,15 @@ export default function NewBillPage() {
         }))
       );
 
-      for (const item of items) {
-        if (item.qty > 0) {
-          await decrementStock(item.product_id, item.qty);
-        }
-      }
-
       toast.success(`Bill ${billNumber} created`);
       router.push(`/bills/${(bill as any).id}${billIsPaid ? "?autoprint=true" : ""}`);
+
+      // Decrement stock in background (best-effort, non-blocking)
+      for (const item of items) {
+        if (item.qty > 0) {
+          decrementStock(item.product_id, item.qty);
+        }
+      }
     } catch (err: any) {
       toast.error("Failed to create bill: " + (err?.message || "Unknown error"));
       setLoading(false);
