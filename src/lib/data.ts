@@ -299,17 +299,19 @@ export async function decrementStock(productId: string, qty: number) {
 }
 
 async function addOfflineQueue(billData: any, itemRows: any[]) {
+  const { synced: _, ...billForSupabase } = billData;
   await db.offline_queue.add({
     table: "bills",
     action: "insert",
-    data: billData,
+    data: billForSupabase,
     created_at: new Date().toISOString(),
   });
   for (const item of itemRows) {
+    const { id: _id, ...itemForSupabase } = item;
     await db.offline_queue.add({
       table: "bill_items",
       action: "insert",
-      data: item,
+      data: itemForSupabase,
       created_at: new Date().toISOString(),
     });
   }
@@ -318,7 +320,8 @@ async function addOfflineQueue(billData: any, itemRows: any[]) {
 async function syncBillToSupabase(billData: any, itemRows: any[]) {
   try {
     const supabase = createClient();
-    const { error: billError } = await supabase.from("bills").insert(billData);
+    const { synced: _, ...billForSupabase } = billData;
+    const { error: billError } = await supabase.from("bills").insert(billForSupabase);
     if (billError) throw billError;
     const items = itemRows.map(({ id: _id, ...rest }: any) => rest);
     const { error: itemsError } = await supabase.from("bill_items").insert(items);
