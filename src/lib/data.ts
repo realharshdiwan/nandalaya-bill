@@ -7,9 +7,11 @@ let initialSyncDone = false;
 export async function initData() {
   if (initialSyncDone) return;
   initialSyncDone = true;
-  if (navigator.onLine) {
+  try {
     await syncAll();
     await flushOfflineQueue();
+  } catch {
+    // sync best-effort
   }
 }
 
@@ -288,13 +290,11 @@ export async function generateBillNumber(): Promise<string | null> {
 }
 
 export async function decrementStock(productId: string, qty: number) {
-  if (navigator.onLine) {
-    try {
-      const supabase = createClient();
-      await supabase.rpc("decrement_stock", { p_product_id: productId, p_qty: qty });
-    } catch {
-      // best-effort
-    }
+  try {
+    const supabase = createClient();
+    await supabase.rpc("decrement_stock", { p_product_id: productId, p_qty: qty });
+  } catch {
+    // best-effort
   }
 }
 
@@ -352,11 +352,7 @@ export async function createBillOffline(bill: any, items: any[]) {
   await db.bills.put(billData);
   await db.bill_items.bulkAdd(itemRows);
 
-  if (navigator.onLine) {
-    syncBillToSupabase(billData, itemRows);
-  } else {
-    await addOfflineQueue(billData, itemRows);
-  }
+  syncBillToSupabase(billData, itemRows);
 
   return billData;
 }

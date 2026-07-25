@@ -3,7 +3,6 @@ import db from "@/lib/db";
 
 export async function syncAll() {
   if (typeof window === "undefined") return;
-  if (!navigator.onLine) return;
 
   const supabase = createClient();
 
@@ -125,7 +124,6 @@ async function syncBills(supabase: ReturnType<typeof createClient>) {
 
 export async function flushOfflineQueue() {
   if (typeof window === "undefined") return;
-  if (!navigator.onLine) return;
 
   const supabase = createClient();
   const queue = await db.offline_queue.toArray();
