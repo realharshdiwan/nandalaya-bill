@@ -49,6 +49,7 @@ export async function connectToPrinter(
   if (platform === "capacitor") {
     try {
       const { BluetoothLe } = await import("@capacitor-community/bluetooth-le");
+      await BluetoothLe.initialize();
       onStatus?.("Searching for printer...");
       const device = await BluetoothLe.requestDevice({
         services: [SERVICE_UUIDS[0]],
