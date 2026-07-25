@@ -1,0 +1,294 @@
+import { createClient } from "@/lib/supabase/client";
+import db, { type PriceEntry, type School, type Product, type Size, type SizeGroup, type ShopConfig } from "@/lib/db";
+import { syncAll, syncPriceListForSchool, syncPricesForGroup, flushOfflineQueue } from "@/lib/sync";
+
+let initialSyncDone = false;
+
+export async function initData() {
+  if (initialSyncDone) return;
+  initialSyncDone = true;
+  await syncAll();
+  await flushOfflineQueue();
+}
+
+export function onOnline(callback: () => void) {
+  window.addEventListener("online", callback);
+  return () => window.removeEventListener("online", callback);
+}
+
+// ── Schools ──
+
+export async function getSchools(): Promise<School[]> {
+  const cached = await db.schools.toArray();
+  const active = cached.filter((s) => s.is_active);
+  if (active.length > 0) return active.sort((a, b) => a.name.localeCompare(b.name));
+
+  const supabase = createClient();
+  const { data } = await supabase.from("schools").select("*").eq("is_active", true).order("name");
+  if (data) {
+    await db.schools.bulkAdd(data as any[]);
+    return data as School[];
+  }
+  return [];
+}
+
+export async function getSchool(id: string): Promise<School | null> {
+  const cached = await db.schools.get(id);
+  if (cached) return cached;
+
+  const supabase = createClient();
+  const { data } = await supabase.from("schools").select("*").eq("id", id).single();
+  if (data) {
+    await db.schools.put(data as any);
+    return data as School;
+  }
+  return null;
+}
+
+// ── Products ──
+
+export async function getProducts(): Promise<Product[]> {
+  const cached = await db.products.toArray();
+  if (cached.length > 0) return cached;
+
+  const supabase = createClient();
+  const { data } = await supabase.from("products").select("*").order("sort_order").order("name");
+  if (data) {
+    await db.products.bulkAdd(data as any[]);
+    return data as Product[];
+  }
+  return [];
+}
+
+// ── Sizes ──
+
+export async function getSizes(): Promise<Size[]> {
+  const cached = await db.sizes.toArray();
+  if (cached.length > 0) return cached;
+
+  const supabase = createClient();
+  const { data } = await supabase.from("sizes").select("*");
+  if (data) {
+    await db.sizes.bulkAdd(data as any[]);
+    return data as Size[];
+  }
+  return [];
+}
+
+export async function getSizeGroups(): Promise<SizeGroup[]> {
+  const cached = await db.size_groups.toArray();
+  const items = await db.size_group_items.toArray();
+
+  if (cached.length > 0 && items.length > 0) {
+    const sizes = await db.sizes.toArray();
+    return cached.map((g) => ({
+      ...g,
+      sizes: items
+        .filter((i) => i.size_group_id === g.id)
+        .map((i) => sizes.find((s) => s.id === i.size_id))
+        .filter(Boolean) as Size[],
+    }));
+  }
+
+  const supabase = createClient();
+  const [groupsRes, itemsRes, sizesRes] = await Promise.all([
+    supabase.from("size_groups").select("*").order("sort_order"),
+    supabase.from("size_group_items").select("size_group_id, size_id, sort_order").order("sort_order"),
+    supabase.from("sizes").select("*"),
+  ]);
+
+  if (groupsRes.data) await db.size_groups.clear();
+  if (itemsRes.data) await db.size_group_items.clear();
+  if (sizesRes.data) await db.sizes.clear();
+
+  if (groupsRes.data) await db.size_groups.bulkAdd(groupsRes.data as any[]);
+  if (itemsRes.data) await db.size_group_items.bulkAdd(itemsRes.data as any[]);
+  if (sizesRes.data) await db.sizes.bulkAdd(sizesRes.data as any[]);
+
+  const allSizes = (sizesRes.data || []) as Size[];
+  return ((groupsRes.data || []) as any[]).map((g) => ({
+    ...g,
+    sizes: ((itemsRes.data || []) as any[])
+      .filter((i: any) => i.size_group_id === g.id)
+      .map((i: any) => allSizes.find((s) => s.id === i.size_id))
+      .filter(Boolean) as Size[],
+  }));
+}
+
+// ── Prices ──
+
+export async function getPricesForSchool(schoolId: string): Promise<PriceEntry[]> {
+  await syncPriceListForSchool(schoolId);
+
+  const schoolPrices = await db.price_list
+    .where("school_id")
+    .equals(schoolId)
+    .toArray();
+
+  const school = await db.schools.get(schoolId);
+  const groupId = school?.school_group_id;
+  const groupPrices = groupId
+    ? await db.price_list.where("school_group_id").equals(groupId).toArray()
+    : [];
+
+  const schoolKeys = new Set(schoolPrices.map((p) => `${p.product_id}-${p.size_id || ""}`));
+  return [
+    ...schoolPrices,
+    ...groupPrices.filter((p) => !schoolKeys.has(`${p.product_id}-${p.size_id || ""}`)),
+  ];
+}
+
+export async function getPricesForGroup(groupId: string): Promise<PriceEntry[]> {
+  await syncPricesForGroup(groupId);
+  return db.price_list.where("school_group_id").equals(groupId).toArray();
+}
+
+// ── Bills ──
+
+export async function createBill(bill: any, items: any[]) {
+  const supabase = createClient();
+
+  const { data: billData, error } = await supabase
+    .from("bills")
+    .insert(bill)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  const billId = (billData as any).id;
+  const billItems = items.map((item) => ({ ...item, bill_id: billId }));
+
+  const { error: itemsError } = await supabase.from("bill_items").insert(billItems);
+  if (itemsError) throw itemsError;
+
+  await db.bills.put({ ...billData, synced: 1 } as any);
+  await db.bill_items.bulkAdd(billItems);
+
+  return billData;
+}
+
+export async function getBills(options?: { limit?: number; schoolId?: string }) {
+  let query = db.bills.orderBy("created_at").reverse();
+
+  const cached = await query.limit(options?.limit || 50).toArray();
+  const filtered = options?.schoolId
+    ? cached.filter((b) => b.school_id === options.schoolId)
+    : cached;
+
+  if (filtered.length > 0) return filtered;
+
+  const supabase = createClient();
+  let supabaseQuery = supabase
+    .from("bills")
+    .select("*, bill_items(*)")
+    .order("created_at", { ascending: false })
+    .limit(options?.limit || 50);
+
+  if (options?.schoolId) {
+    supabaseQuery = supabaseQuery.eq("school_id", options.schoolId);
+  }
+
+  const { data } = await supabaseQuery;
+  if (data) {
+    const bills: any[] = [];
+    const items: any[] = [];
+    for (const row of data) {
+      const itemRows = Array.isArray(row.bill_items) ? row.bill_items : [];
+      bills.push({ ...row, bill_items: undefined, synced: 1 });
+      for (const item of itemRows) {
+        items.push(item);
+      }
+    }
+    await db.bills.bulkAdd(bills);
+    if (items.length > 0) await db.bill_items.bulkAdd(items);
+    return bills;
+  }
+
+  return [];
+}
+
+export async function getBill(id: string) {
+  const cached = await db.bills.get(id);
+  if (cached) {
+    const items = await db.bill_items.where("bill_id").equals(id).toArray();
+    return { bill: cached, items };
+  }
+
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("bills")
+    .select("*, bill_items(*)")
+    .eq("id", id)
+    .single();
+
+  if (data) {
+    const itemRows = Array.isArray((data as any).bill_items) ? (data as any).bill_items : [];
+    const bill = { ...data, bill_items: undefined, synced: 1 } as any;
+    await db.bills.put(bill);
+    if (itemRows.length > 0) await db.bill_items.bulkAdd(itemRows);
+    return { bill, items: itemRows };
+  }
+
+  return null;
+}
+
+// ── Shop config ──
+
+export async function getShopConfig(key: string): Promise<string | null> {
+  const cached = await db.shop_config.get(key);
+  if (cached) return cached.value;
+
+  const supabase = createClient();
+  const { data } = await supabase.from("shop_config").select("value").eq("key", key).single();
+  if (data) {
+    await db.shop_config.put({ key, value: data.value });
+    return data.value;
+  }
+  return null;
+}
+
+export async function getShopConfigAll(): Promise<Record<string, string>> {
+  const cached = await db.shop_config.toArray();
+  const map = Object.fromEntries(cached.map((r) => [r.key, r.value]));
+
+  if (cached.length > 0) return map;
+
+  const supabase = createClient();
+  const { data } = await supabase.from("shop_config").select("key, value");
+  if (data) {
+    await db.shop_config.bulkAdd(data);
+    return Object.fromEntries(data.map((r: any) => [r.key, r.value]));
+  }
+  return map;
+}
+
+// ── School Groups ──
+
+export async function getSchoolGroups() {
+  const supabase = createClient();
+  const { data } = await supabase.from("school_groups").select("*").order("sort_order");
+  return data || [];
+}
+
+export async function getPriceEntries() {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("price_list")
+    .select(`id, school_id, school_group_id, product_id, size_id, price,
+      schools!left(id, name, short_code),
+      school_groups!left(id, name),
+      products(id, name, category),
+      sizes(id, label, numeric_value)`)
+    .eq("is_active", true);
+
+  return ((data as any[]) || []).map((row: any) => ({
+    ...row,
+    schools: row.schools ? (Array.isArray(row.schools) ? row.schools[0] : row.schools) : null,
+    school_groups: row.school_groups ? (Array.isArray(row.school_groups) ? row.school_groups[0] : row.school_groups) : null,
+    products: Array.isArray(row.products) ? row.products[0] : row.products,
+    sizes: row.sizes ? (Array.isArray(row.sizes) ? row.sizes[0] : row.sizes) : null,
+  }));
+}

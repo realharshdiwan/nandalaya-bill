@@ -1,0 +1,188 @@
+import { createClient } from "@/lib/supabase/client";
+import db from "@/lib/db";
+
+export async function syncAll() {
+  if (typeof window === "undefined") return;
+  if (!navigator.onLine) return;
+
+  const supabase = createClient();
+
+  try {
+    const results = await Promise.allSettled([
+      syncSchools(supabase),
+      syncProducts(supabase),
+      syncSizes(supabase),
+      syncSizeGroups(supabase),
+      syncSizeGroupItems(supabase),
+      syncShopConfig(supabase),
+      syncBills(supabase),
+    ]);
+
+    const failed = results.filter((r) => r.status === "rejected");
+    if (failed.length > 0) {
+      console.warn("Sync: some tables failed", failed);
+    }
+  } catch {
+    // silently fail when offline
+  }
+}
+
+async function syncSchools(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase.from("schools").select("*");
+  if (data) {
+    await db.schools.clear();
+    await db.schools.bulkAdd(data as any[]);
+  }
+}
+
+async function syncProducts(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase.from("products").select("*");
+  if (data) {
+    await db.products.clear();
+    await db.products.bulkAdd(data as any[]);
+  }
+}
+
+async function syncSizes(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase.from("sizes").select("*");
+  if (data) {
+    await db.sizes.clear();
+    await db.sizes.bulkAdd(data as any[]);
+  }
+}
+
+async function syncSizeGroups(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase.from("size_groups").select("*");
+  if (data) {
+    await db.size_groups.clear();
+    await db.size_groups.bulkAdd(data as any[]);
+  }
+}
+
+async function syncSizeGroupItems(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase
+    .from("size_group_items")
+    .select("size_group_id, size_id, sort_order")
+    .order("sort_order");
+  if (data) {
+    await db.size_group_items.clear();
+    await db.size_group_items.bulkAdd(data as any[]);
+  }
+}
+
+async function syncShopConfig(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase.from("shop_config").select("*");
+  if (data) {
+    await db.shop_config.clear();
+    await db.shop_config.bulkAdd(data as any[]);
+  }
+}
+
+async function syncBills(supabase: ReturnType<typeof createClient>) {
+  const { data } = await supabase
+    .from("bills")
+    .select("*, bill_items(*)")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (data) {
+    const bills: any[] = [];
+    const items: any[] = [];
+    for (const row of data) {
+      const itemRows = Array.isArray(row.bill_items) ? row.bill_items : [];
+      bills.push({ ...row, bill_items: undefined, synced: 1 });
+      for (const item of itemRows) {
+        items.push(item);
+      }
+    }
+
+    await db.bills.clear();
+    await db.bills.bulkAdd(bills);
+
+    await db.bill_items.clear();
+    if (items.length > 0) {
+      await db.bill_items.bulkAdd(items);
+    }
+  }
+}
+
+export async function syncPriceListForSchool(schoolId: string) {
+  if (typeof window === "undefined") return;
+  if (!navigator.onLine) return;
+
+  const supabase = createClient();
+
+  const { data } = await supabase
+    .from("price_list")
+    .select("*")
+    .eq("school_id", schoolId)
+    .eq("is_active", true);
+
+  if (data) {
+    await db.price_list.where("school_id").equals(schoolId).delete();
+    await db.price_list.bulkAdd(data as any[]);
+  }
+
+  const { data: school } = await supabase
+    .from("schools")
+    .select("school_group_id")
+    .eq("id", schoolId)
+    .single();
+
+  const groupId = (school as { school_group_id: string | null } | null)?.school_group_id;
+  if (groupId) {
+    const { data: groupPrices } = await supabase
+      .from("price_list")
+      .select("*")
+      .eq("school_group_id", groupId)
+      .eq("is_active", true);
+
+    if (groupPrices) {
+      const existing = await db.price_list.where("school_group_id").equals(groupId).toArray();
+      if (existing.length === 0) {
+        await db.price_list.bulkAdd(groupPrices as any[]);
+      }
+    }
+  }
+}
+
+export async function syncPricesForGroup(groupId: string) {
+  if (typeof window === "undefined") return;
+  if (!navigator.onLine) return;
+
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("price_list")
+    .select("*")
+    .eq("school_group_id", groupId)
+    .eq("is_active", true);
+
+  if (data) {
+    await db.price_list.where("school_group_id").equals(groupId).delete();
+    await db.price_list.bulkAdd(data as any[]);
+  }
+}
+
+export async function flushOfflineQueue() {
+  if (typeof window === "undefined") return;
+  if (!navigator.onLine) return;
+
+  const supabase = createClient();
+  const queue = await db.offline_queue.toArray();
+
+  for (const entry of queue) {
+    try {
+      if (entry.action === "insert") {
+        await supabase.from(entry.table).insert(entry.data as any);
+      } else if (entry.action === "update") {
+        const { id, ...rest } = entry.data as any;
+        if (id) {
+          await supabase.from(entry.table).update(rest).eq("id", id);
+        }
+      }
+      await db.offline_queue.delete(entry.id!);
+    } catch {
+      // keep in queue for next retry
+    }
+  }
+}

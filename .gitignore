@@ -40,6 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# serwist
+public/sw*
+public/swe
+
 # opencode
 .agents/
 skills-lock.json

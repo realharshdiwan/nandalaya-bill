@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Menu, ShoppingCart } from "lucide-react";
 import { getCartCount, getCartTotal } from "@/lib/cart";
+import { initData } from "@/lib/data";
+import OfflineBanner from "@/components/offline-banner";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -20,6 +22,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setSidebarOpen(window.innerWidth >= 768);
+    initData();
   }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -61,6 +64,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+
+      <OfflineBanner />
 
       {/* Floating cart pill — hidden on school detail pages (they have their own sticky bar) */}
       {cartCount > 0 && !pathname.startsWith("/schools/") && (
